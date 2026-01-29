@@ -1,0 +1,17 @@
+qdrant:
+  host: "lori2mai11ya.asuscomm.com"
+  port: 6333
+  api_key: "boostcamp"        # API 키 사용 시 문자열로 채우기, 없으면 null 유지
+  prefer_grpc: false   # gRPC 사용 시 true
+  https: false         # Qdrant가 HTTPS가 아니라 HTTP라면 false 로 둠
+  timeout: 120         # HTTP 요청 타임아웃(초). 원격/대용량 시 120~300 권장.
+
+insert:
+  batch_size: 1000     # Qdrant로 한 번에 업서트할 포인트 개수
+
+# 실행 설정 (옵션: CLI 인자로 덮어쓸 수 있음)
+run:
+  mode: "triple"                     # article / triple / entity
+  csv_path: "data/news_articles_resources_triples.csv" # "data/news_T_labeled_commodities.csv"     # 실제 CSV 경로로 변경
+  collection_name: null               # 기본 컬렉션 이름 쓰려면 null (기본: article_v1 / triples_v1 / entity_v1)
+  max_points: null                    # 최대 업서트 개수 (전체 넣으려면 null)
