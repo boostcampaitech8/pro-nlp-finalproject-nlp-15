@@ -1,0 +1,10 @@
+[project]
+name = "tilda-data"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langfuse>=3.12.1",
+    "streamlit>=1.53.1",
+]

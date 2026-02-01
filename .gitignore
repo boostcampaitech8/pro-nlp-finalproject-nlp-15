@@ -1,0 +1,32 @@
+# --- uv & Virtual Environments ---
+.venv/
+uv.lock
+# 만약 팀 프로젝트에서 라이브러리 버전을 고정하고 싶다면 uv.lock은 제외(삭제)해도 됩니다.
+
+# --- Python Base ---
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+
+# --- Project Specific Data ---
+# 원본 데이터와 결과물 제외
+data/
+# output 폴더 내부의 개별 데이터들은 제외하고 구조는 유지
+outputs/
+logs/
+
+
+# --- State Management ---
+# 개인별 진행 상황은 공유하지 않음
+output/.state/
+
+# --- IDE & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Hydra & Configuration ---
+outputs/
+multirun/
