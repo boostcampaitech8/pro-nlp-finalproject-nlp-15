@@ -1,0 +1,12 @@
+defaults:
+  - _self_
+  - llm: local
+  - db: rdb.example
+  - prompts/schema_ie@prompts
+  - prompts/bear_agent@prompts
+  - prompts/bull_agent@prompts
+  - prompts/verdict@prompts        
+  - prompts/analyst_agent@prompts  
+
+data:
+  raw_path: ${hydra:runtime.cwd}/data/sample

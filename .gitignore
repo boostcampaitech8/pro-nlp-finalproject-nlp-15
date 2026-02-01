@@ -1,0 +1,43 @@
+# --- uv & Virtual Environments ---
+.venv/
+
+# --- Python Base ---
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.env.local
+
+# --- Model Weights ---
+models/
+*.bin
+*.pt
+*.safetensors
+
+# --- Security & SSH Keys ---
+*.pem
+*.key
+id_rsa*
+
+# --- Project Specific Data ---
+data/
+outputs/
+logs/
+multirun/
+
+# --- Config & Sensitive Info ---
+config/llm/local.yaml
+config/db/rdb.yaml
+!config/llm/local.example.yaml
+!config/db/rdb.example.yaml
+
+# --- IDE & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Testing & Others ---
+.pytest_cache/
+.ipynb_checkpoints/
+.coverage
