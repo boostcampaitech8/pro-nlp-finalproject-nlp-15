@@ -1,7 +1,7 @@
 # conf/config.yaml
 defaults:
   - _self_
-
+  - llm: local
 # 데이터 처리 관련 설정
 extraction:
   files: [
@@ -23,9 +23,4 @@ extraction:
   max_articles_per_window: 50
   chunk_size: 50000
   resume: true
-  output_dir: "outputs/events/v6_3d"
-
-# LLM 관련 설정
-llm:
-  temperature: 0
-  model: "local_model"
+  output_dir: "outputs/events/v7"
