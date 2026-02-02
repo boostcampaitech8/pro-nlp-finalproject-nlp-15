@@ -1,0 +1,20 @@
+defaults:
+  - llm: local  # config/llm/openai.yaml 사용
+  - _self_
+
+data:
+  dir_path: "data/prices"
+  event_result_path: "data/events"
+
+# Langfuse 프롬프트 관리
+prompts:
+  financial_analysis: "financial_market_analysis"
+  financial_context: "financial_market_context"
+
+# 비용 및 토큰 제어 상수
+limits:
+  max_days_range: 3000
+  token_warning_threshold: 15000
+  max_price_rows: 60
+  max_event_count: 20  # 변동성 기반으로 추출할 핵심 사건 수
+  volatility_threshold: 0.02 # 변동성 임계값 (2%)
