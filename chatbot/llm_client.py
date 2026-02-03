@@ -25,13 +25,16 @@ class LLMClient:
             )
 
         # 3. ChatOpenAI 객체 생성 (OpenAI 규격을 따르는 로컬 모델도 호환됨)
+        # 설정에서 기본 필드를 제외한 나머지는 model_kwargs로 전달 (예: reasoning_effort)
+        exclude_keys = {"model", "secret_key_name", "base_url", "temperature"}
+        model_kwargs = {k: v for k, v in cfg.items() if k not in exclude_keys}
+
         self.model = ChatOpenAI(
             model=model_name,
             openai_api_key=api_key,
             openai_api_base=base_url,
-            temperature=cfg.temperature
-            # JSON 모드 강제 설정 제거 (대화형 에이전트를 위해 마크다운 출력 허용)
-            # model_kwargs={"response_format": {"type": "json_object"}}
+            temperature=cfg.temperature,
+            model_kwargs=model_kwargs
         )
 
     def get_response(self, messages, callbacks=None):
