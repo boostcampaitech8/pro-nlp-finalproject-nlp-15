@@ -1,0 +1,6 @@
+provider: "gemini"
+gemini:
+  model: "gemini-2.5-flash"
+  secret_key_name: "GEMINI_API_KEY"
+  base_url: "https://generativelanguage.googleapis.com/v1beta/"
+  temperature: 0.1

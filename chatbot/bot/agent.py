@@ -1,43 +1,54 @@
 from langfuse import Langfuse
-from chatbot.llm_client import LLMClient
+from langfuse.langchain import CallbackHandler
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+from .llm_client import LLMClient
+from .prompt import PromptManager
+from db.stock_api import StockAPI
+from db.news_repo import NewsRepository
+from chatbot.tools.get_summary import GetSummaryTool
+from chatbot.tools.search_events import SearchEventsTool
 
 class FinancialAgent:
     def __init__(self, cfg):
         self.cfg = cfg
         self.client = LLMClient(cfg.llm)
-        self.langfuse = Langfuse()
-
-    def analyze_stream(self, asset_name, user_query, price_context, event_context, chat_history):
-        # 1. 지침(Instruction) 로드 - 변수 주입 없이 순수 지침만 가져옴
-        prompt_name = self.cfg.prompts.financial_analysis
-        langfuse_prompt = self.langfuse.get_prompt(prompt_name)
-        instruction_text = langfuse_prompt.compile() # 변수 없음
+        self.prompt_manager = PromptManager(cfg)
         
-        # 2. 시스템 메시지 계층화 (Layering)
-        # Layer 1: 페르소나 및 기본 지침
+        # Initialize Tools internally
+        # Initialize Tools internally
+        self.stock_api = StockAPI(cfg.data.dir_path)
+        self.news_repo = NewsRepository(cfg.data.event_result_path)
+        self.summary_tool = GetSummaryTool(self.stock_api)
+        self.events_tool = SearchEventsTool(self.news_repo, self.stock_api)
+
+    def analyze_stream(self, asset_name, user_query, start_date, end_date, chat_history, target_files=None):
+        # 0. Generate Context (Internal)
+        price_context = self.summary_tool.run(asset_name, start_date, end_date)
+        event_context = self.events_tool.run(asset_name, start_date, end_date, target_files=target_files, top_k=20)
+
+        # 1. Fetch Instructions & Context Prompt
+        langfuse_prompt = self.prompt_manager.get_persona_prompt()
+        instruction_text = langfuse_prompt.compile() if hasattr(langfuse_prompt, "compile") else str(langfuse_prompt)
+        
+        context_prompt = self.prompt_manager.get_context_prompt()
+        # Ensure context prompt has compile method or formatting
+        if hasattr(context_prompt, "compile"):
+             data_text = context_prompt.compile(
+                asset_name=asset_name.upper(),
+                price_context=price_context,
+                event_context=event_context
+            )
+        else:
+            data_text = f"Asset: {asset_name}\nPrice Code: {price_context}\nEvents: {event_context}"
+
+        # 2. Build Messages
         persona_msg = SystemMessage(content=instruction_text)
-        
-        # Layer 2: 참조 데이터 (Reference Data)
-        # System Message로 구성하여 대화 내역(History)과 분리된 '배경 지식'임을 명시
-        # Langfuse에서 데이터 템플릿 로드
-        context_prompt_name = self.cfg.prompts.financial_context
-        context_prompt = self.langfuse.get_prompt(context_prompt_name)
-        
-        data_text = context_prompt.compile(
-            asset_name=asset_name.upper(),
-            price_context=price_context,
-            event_context=event_context
-        )
         data_msg = SystemMessage(content=data_text)
-
-        # 3. 메시지 결합: [Persona] -> [Data] -> [History] -> [User Query]
-        # Chat history is assumed to be a list of Langchain Message objects
+        
         messages = [persona_msg, data_msg] + chat_history + [HumanMessage(content=user_query)]
 
-        # 4. LLM 호출 (Langfuse Callback Handler 추가)
-        # extract/llm_client.py의 패턴을 따름 (langfuse.langchain 모듈 사용)
-        from langfuse.langchain import CallbackHandler
+        # 3. Stream Response
+        # Use client.get_stream for abstraction
         trace_handler = CallbackHandler()
-        
-        return self.client.model.stream(messages, config={"callbacks": [trace_handler]})
+        return self.client.get_stream(messages, callbacks=[trace_handler])
