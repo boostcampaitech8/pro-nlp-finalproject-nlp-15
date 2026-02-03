@@ -55,26 +55,30 @@ class NewsRepository:
         
         return article_map
 
-    def get_events(self, start_date: date, end_date: date, keywords: Optional[List[str]] = None, target_files: Optional[List[str]] = None) -> List[Dict]:
+
+    @st.cache_data(ttl=3600, show_spinner="Loading events...")
+    def get_events(_self, start_date: date, end_date: date, keywords: Optional[List[str]] = None, target_files: Optional[List[str]] = None) -> List[Dict]:
         """
         Loads event data from JSON files and filters by date and optional keywords.
         Enriches events with article metadata via source IDs.
+        
+        NOTE: _self prefix to avoid hashing issues with st.cache_data
         """
         events = []
-        if not os.path.exists(self.event_dir):
+        if not os.path.exists(_self.event_dir):
             return events
 
         # Load articles first (now a static cached method)
-        article_map = NewsRepository._load_articles(self.article_dir, target_files)
+        article_map = NewsRepository._load_articles(_self.article_dir, target_files)
 
         if target_files is not None:
-            files_to_read = [f for f in target_files if os.path.exists(os.path.join(self.event_dir, f))]
+            files_to_read = [f for f in target_files if os.path.exists(os.path.join(_self.event_dir, f))]
         else:
-            files_to_read = [f for f in os.listdir(self.event_dir) if f.endswith((".json", ".jsonl"))]
+            files_to_read = [f for f in os.listdir(_self.event_dir) if f.endswith((".json", ".jsonl"))]
         
         for filename in files_to_read:
             if filename.endswith(".json") or filename.endswith(".jsonl"):
-                filepath = os.path.join(self.event_dir, filename)
+                filepath = os.path.join(_self.event_dir, filename)
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         # Handle JSONL (Line-delimited JSON)

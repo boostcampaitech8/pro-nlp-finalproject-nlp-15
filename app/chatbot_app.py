@@ -33,40 +33,36 @@ st.set_page_config(page_title="AI Financial Intelligence", layout="wide")
 stock_api = StockAPI(cfg.data.dir_path)
 news_repo = NewsRepository(cfg.data.event_result_path)
 
-# --- Pre-calculate / Handle Selection before UI rendering ---
-# This ensures that if the chart triggers a rerun, we update the state BEFORE the sidebar is drawn.
+# --- Initial State & Date Handling ---
+# 1. Initialize Asset & Date Range from Query Params or Defaults
+if "init_done" not in st.session_state:
+    st.session_state.start_date = None
+    st.session_state.end_date = None
+    st.session_state.init_done = True
+
+# 2. Support Chart Selection (Box/Drag) at the very top
 if "main_chart" in st.session_state and st.session_state.main_chart:
     selected = st.session_state.main_chart
     if "selection" in selected and "box" in selected["selection"]:
-        selection_box = selected["selection"]["box"]
-        if selection_box:
-            x_range = selection_box[0].get("x")
-            if x_range:
-                import pandas as pd
-                try:
-                    new_start = pd.to_datetime(x_range[0]).date()
-                    new_end = pd.to_datetime(x_range[1]).date()
-                    
-                    # Compare against query params (source of truth), not session_state
-                    q_start = st.query_params.get('start_date')
-                    q_end = st.query_params.get('end_date')
-                    current_start = pd.to_datetime(q_start).date() if q_start else None
-                    current_end = pd.to_datetime(q_end).date() if q_end else None
-                    
-                    if new_start != current_start or new_end != current_end:
-                        # Update State and Query Params
-                        st.session_state.start_date = new_start
-                        st.session_state.end_date = new_end
-                        st.query_params["start_date"] = str(new_start)
-                        st.query_params["end_date"] = str(new_end)
-                        
-                        st.toast(f"📊 {new_start} ~ {new_end}")
-                        # Force immediate rerun to update sidebar widgets
-                        st.rerun()
-                except Exception as e: 
-                    pass
-
-
+        box = selected["selection"]["box"]
+        if box and "x" in box[0]:
+            x_range = box[0]["x"]
+            try:
+                new_start = pd.to_datetime(x_range[0]).date()
+                new_end = pd.to_datetime(x_range[1]).date()
+                
+                # Check if selection is actually new to avoid infinite rerun
+                curr_start = st.query_params.get("start_date")
+                curr_end = st.query_params.get("end_date")
+                
+                if str(new_start) != curr_start or str(new_end) != curr_end:
+                    st.query_params["start_date"] = str(new_start)
+                    st.query_params["end_date"] = str(new_end)
+                    st.session_state.start_date = new_start
+                    st.session_state.end_date = new_end
+                    st.toast(f"🏆 Range Selected: {new_start} ~ {new_end}")
+                    st.rerun()
+            except Exception: pass
 
 # --- Sidebar ---
 with st.sidebar:
@@ -81,28 +77,21 @@ with st.sidebar:
     df = stock_api.get_price_data(asset_name)
     
     if not df.empty:
-        # CRITICAL: Always check query params FIRST and NEVER overwrite them
+        # Load dates from Query Params (Source of Truth)
         q_start = st.query_params.get("start_date")
         q_end = st.query_params.get("end_date")
         
-        # If query params exist, restore from them (they are the source of truth)
         if q_start and q_end:
-            try:
-                st.session_state.start_date = pd.to_datetime(q_start).date()
-                st.session_state.end_date = pd.to_datetime(q_end).date()
-            except:
-                pass
-        
-        # ONLY initialize if query params are completely absent
-        if not q_start or not q_end:
-            if "start_date" not in st.session_state:
-                st.session_state.start_date = df['time'].min().date()
-                st.session_state.end_date = df['time'].max().date()
-                # Set query params for the first time
-                st.query_params["start_date"] = str(st.session_state.start_date)
-                st.query_params["end_date"] = str(st.session_state.end_date)
+            st.session_state.start_date = pd.to_datetime(q_start).date()
+            st.session_state.end_date = pd.to_datetime(q_end).date()
+        else:
+            # First time load or clear case
+            st.session_state.start_date = df['time'].min().date()
+            st.session_state.end_date = df['time'].max().date()
+            st.query_params["start_date"] = str(st.session_state.start_date)
+            st.query_params["end_date"] = str(st.session_state.end_date)
 
-        # --- Date Selection (Moved to Top) ---
+        # --- Date Selection ---
         st.divider()
         st.subheader("📅 Date Range")
         
@@ -206,7 +195,7 @@ else:
                 )
             )
             
-            selected = st.plotly_chart(
+            chart_result = st.plotly_chart(
                 fig, 
                 on_select="rerun", 
                 selection_mode="box",
@@ -215,18 +204,27 @@ else:
 
     # --- Side Panel (Timeline & Chat) ---
     with col_side:
-        tab_ev, tab_chat = st.tabs(["Timeline", "AI Analyst"])
+        # Load events (cached in NewsRepository.get_events)
+        display_events = news_repo.get_events(
+            st.session_state.start_date, 
+            st.session_state.end_date, 
+            target_files=selected_event_files
+        )
+        
+        tab_ev, tab_chat = st.tabs(["📅 Timeline", "🤖 AI Analyst"])
         
         # Tab 1: Timeline
         with tab_ev:
-            # UI fetches events for DISPLAY purposes only.
-            display_events = news_repo.get_events(
-                st.session_state.start_date, 
-                st.session_state.end_date, 
-                target_files=selected_event_files
-            )
-            
-            st.caption(f"Found {len(display_events)} events in selected range.")
+            # Header with refresh button
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.caption(f"📊 Found {len(display_events)} events")
+                st.caption(f"📅 {st.session_state.start_date} ~ {st.session_state.end_date}")
+            with col2:
+                if st.button("🔄 Refresh", key="refresh_events", use_container_width=True):
+                    # Clear NewsRepository cache and force reload
+                    news_repo.get_events.clear()
+                    st.rerun()
             
             # Scrollable Container for Events
             with st.container(height=700):
