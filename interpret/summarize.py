@@ -1,5 +1,9 @@
 """사건 및 뉴스 요약 모듈"""
 
+from __future__ import annotations
+
+from typing import Callable
+
 from omegaconf import DictConfig
 
 from .core import send_llmapi, get_news
@@ -9,7 +13,7 @@ def get_summarize(
     event: str,
     news_ids: list[int],
     cfg: DictConfig,
-    news_fetcher: callable | None = None,
+    news_fetcher: Callable | None = None,
 ) -> str:
     """
     사건과 기사들에 대한 요약을 생성합니다.

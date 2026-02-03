@@ -60,3 +60,6 @@ config/db/rdb.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# Data
+data/
