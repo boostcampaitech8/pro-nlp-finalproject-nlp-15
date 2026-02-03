@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# Hydra outputs
+outputs/
+multirun/
+
+# 민감한 설정 파일 - example 파일만 Git 추적
+# config/config.yaml 은 민감 정보 없음 (defaults, prompts만 포함)
+config/llm/local.yaml
+config/db/rdb.yaml
+
+# 환경 변수
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
