@@ -143,6 +143,15 @@ with st.sidebar:
     default_matches = [f for f in all_event_files if asset_name in f]
     selected_event_files = st.multiselect("Choose Event Source", all_event_files, default=default_matches)
     
+    # Agent Mode Selection
+    st.divider()
+    st.subheader("🤖 Agent Mode")
+    use_agentic = st.toggle("🔧 Agentic Tool Calling", value=True, 
+                            help="When ON: LLM decides which tools to use.\\nWhen OFF: All context is pre-injected.")
+    if use_agentic:
+        st.caption("✅ LLM will select tools dynamically")
+    else:
+        st.caption("📋 Using legacy pre-injected context")
 
 
 # --- Main Page ---
@@ -263,33 +272,55 @@ else:
                 chat_box.chat_message(msg.type).write(msg.content)
 
             if query := st.chat_input("Ask about market drivers..."):
+                # Type guard: query is guaranteed to be str (not None) inside this block
+                assert isinstance(query, str)
+                
                 with chat_box:
                     st.chat_message("user").write(query)
                 
                 # Agent Init
                 agent = FinancialAgent(cfg)
                 
+                # Capture query for nested function (type checker)
+                user_query: str = query
+                
                 with chat_box.chat_message("assistant"):
-                    res = st.empty()
-                    full_ans = ""
                     # Stream response - Passing Metadata including file selection
                     start_d = st.session_state.start_date
                     end_d = st.session_state.end_date
                     
-                    # Update Agent call to accept target_files
-                    # Note: Agent needs update to accept this
-                    for chunk in agent.analyze_stream(
-                        asset_name, 
-                        query, 
-                        start_d, 
-                        end_d, 
-                        msgs.messages, 
-                        target_files=selected_event_files
-                    ):
-                        content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                        full_ans += content
-                        res.markdown(full_ans + "▌")
-                    res.markdown(full_ans)
+                    # Generator wrapper to extract content from chunks
+                    def stream_content():
+                        if use_agentic:
+                            # Agentic mode: LLM decides which tools to call
+                            for chunk in agent.analyze_stream_agentic(
+                                asset_name, 
+                                user_query,  # Use captured variable
+                                start_d, 
+                                end_d, 
+                                msgs.messages, 
+                                target_files=selected_event_files
+                            ):
+                                # Agent guarantees string content
+                                if hasattr(chunk, "content") and chunk.content:
+                                    yield str(chunk.content)
+                        else:
+                            # Legacy mode: Pre-inject all context
+                            for chunk in agent.analyze_stream(
+                                asset_name, 
+                                user_query,  # Use captured variable
+                                start_d, 
+                                end_d, 
+                                msgs.messages, 
+                                target_files=selected_event_files
+                            ):
+                                if hasattr(chunk, "content") and chunk.content:
+                                    yield str(chunk.content)
+                    
+                    # Use st.write_stream for smooth streaming
+                    response = st.write_stream(stream_content())
+                    # Ensure full_ans is a string (write_stream returns str or list)
+                    full_ans = str(response) if response else ""
                     
                 msgs.add_user_message(query)
                 msgs.add_ai_message(full_ans)
