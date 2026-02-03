@@ -1,31 +1,73 @@
 import os
 import json
+import pandas as pd
+import streamlit as st
 from typing import List, Dict, Optional
 from datetime import date
 
 class NewsRepository:
-    def __init__(self, event_dir: str):
+    def __init__(self, event_dir: str, article_dir: Optional[str] = None):
         self.event_dir = event_dir
+        # Default: assume articles are in a sibling directory
+        self.article_dir = article_dir or os.path.join(os.path.dirname(event_dir), "articles")
 
     def get_all_files(self) -> List[str]:
         """Returns list of available event files (json/jsonl)."""
         if not os.path.exists(self.event_dir): return []
         return [f for f in os.listdir(self.event_dir) if f.endswith((".json", ".jsonl"))]
 
+    @st.cache_data(ttl=3600)  # Cache for 1 hour
+    def _load_articles(_article_dir: str, target_files: Optional[List[str]] = None) -> Dict[str, Dict]:
+        """
+        Loads article CSVs and returns a lookup dictionary: {article_id: article_dict}.
+        If target_files is provided, only load matching article CSVs (based on filename stem).
+        Note: Static method for better caching.
+        """
+        article_map = {}
+        if not os.path.exists(_article_dir):
+            return article_map
+        
+        # Determine which article files to load
+        if target_files:
+            # Match event file stems to article file stems (e.g., copper_silver.jsonl -> copper_silver.csv)
+            stems = [os.path.splitext(f)[0] for f in target_files]
+            article_files = [f"{stem}.csv" for stem in stems if os.path.exists(os.path.join(_article_dir, f"{stem}.csv"))]
+        else:
+            article_files = [f for f in os.listdir(_article_dir) if f.endswith(".csv")]
+        
+        for filename in article_files:
+            filepath = os.path.join(_article_dir, filename)
+            try:
+                df = pd.read_csv(filepath)
+                if 'id' not in df.columns:
+                    continue
+                for _, row in df.iterrows():
+                    article_id = row['id']
+                    article_map[article_id] = {
+                        'title': row.get('title', 'No Title'),
+                        'description': row.get('description', ''),
+                        'url': row.get('doc_url', ''),
+                        'publish_date': row.get('publish_date', ''),
+                        'source': row.get('meta_site_name', '')
+                    }
+            except Exception as e:
+                print(f"Error loading article file {filename}: {e}")
+        
+        return article_map
+
     def get_events(self, start_date: date, end_date: date, keywords: Optional[List[str]] = None, target_files: Optional[List[str]] = None) -> List[Dict]:
         """
         Loads event data from JSON files and filters by date and optional keywords.
+        Enriches events with article metadata via source IDs.
         """
         events = []
         if not os.path.exists(self.event_dir):
             return events
 
-        # Assuming event files are named like 'events.json' or structured by asset
-        # For prototype, we iterate all json files or specific ones if logic exists
-        # Here simplified: verify path exists and iterate
-        
+        # Load articles first (now a static cached method)
+        article_map = NewsRepository._load_articles(self.article_dir, target_files)
+
         if target_files is not None:
-            # If user explicitly provided a list (even empty), respect it
             files_to_read = [f for f in target_files if os.path.exists(os.path.join(self.event_dir, f))]
         else:
             files_to_read = [f for f in os.listdir(self.event_dir) if f.endswith((".json", ".jsonl"))]
@@ -64,9 +106,18 @@ class NewsRepository:
                                 if keywords:
                                     text = (item.get('title', '') + item.get('description', '')).lower()
                                     if any(k.lower() in text for k in keywords):
-                                        events.append(item)
+                                        pass  # Continue to enrichment
+                                    else:
+                                        continue
+                                
+                                # Enrich with articles
+                                source_ids = item.get('source', [])
+                                if isinstance(source_ids, list):
+                                    item['articles'] = [article_map[sid] for sid in source_ids if sid in article_map]
                                 else:
-                                    events.append(item)
+                                    item['articles'] = []
+                                
+                                events.append(item)
                 except Exception as e:
                     print(f"Error reading {filename}: {e}")
         

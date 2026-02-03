@@ -47,23 +47,26 @@ if "main_chart" in st.session_state and st.session_state.main_chart:
                     new_start = pd.to_datetime(x_range[0]).date()
                     new_end = pd.to_datetime(x_range[1]).date()
                     
-                    if new_start != st.session_state.get('start_date') or new_end != st.session_state.get('end_date'):
-                        # Update State
+                    # Compare against query params (source of truth), not session_state
+                    q_start = st.query_params.get('start_date')
+                    q_end = st.query_params.get('end_date')
+                    current_start = pd.to_datetime(q_start).date() if q_start else None
+                    current_end = pd.to_datetime(q_end).date() if q_end else None
+                    
+                    if new_start != current_start or new_end != current_end:
+                        # Update State and Query Params
                         st.session_state.start_date = new_start
                         st.session_state.end_date = new_end
                         st.query_params["start_date"] = str(new_start)
                         st.query_params["end_date"] = str(new_end)
                         
-                        # Clear widget keys to force re-initialization from 'value'
-                        if "start_date_input" in st.session_state: del st.session_state.start_date_input
-                        if "end_date_input" in st.session_state: del st.session_state.end_date_input
-                        
-                        # No st.rerun() needed here; the script continues to the sidebar with new state.
-                        st.toast(f"Synchronizing: {new_start} ~ {new_end}")
+                        st.toast(f"📊 {new_start} ~ {new_end}")
+                        # Force immediate rerun to update sidebar widgets
+                        st.rerun()
                 except Exception as e: 
                     pass
-            else:
-                pass
+
+
 
 # --- Sidebar ---
 with st.sidebar:
@@ -78,43 +81,52 @@ with st.sidebar:
     df = stock_api.get_price_data(asset_name)
     
     if not df.empty:
-        # Initialize Dates: Priority 1: Query Params, Priority 2: Full Range
-        if "start_date" not in st.session_state:
-            q_start = st.query_params.get("start_date")
-            q_end = st.query_params.get("end_date")
-            
+        # CRITICAL: Always check query params FIRST and NEVER overwrite them
+        q_start = st.query_params.get("start_date")
+        q_end = st.query_params.get("end_date")
+        
+        # If query params exist, restore from them (they are the source of truth)
+        if q_start and q_end:
             try:
-                # Handle query params being list or string depending on streamlit version/impl, usually string in st.query_params access
-                # But safer to just cast or parse
-                s_date = pd.to_datetime(q_start).date() if q_start else df['time'].min().date()
-                e_date = pd.to_datetime(q_end).date() if q_end else df['time'].max().date()
+                st.session_state.start_date = pd.to_datetime(q_start).date()
+                st.session_state.end_date = pd.to_datetime(q_end).date()
             except:
-                s_date = df['time'].min().date()
-                e_date = df['time'].max().date()
-
-            # Bounds Check
-            min_d, max_d = df['time'].min().date(), df['time'].max().date()
-            if s_date < min_d: s_date = min_d
-            if e_date > max_d: e_date = max_d
-            
-            st.session_state.start_date = s_date
-            st.session_state.end_date = e_date
-
-            
-            st.session_state.start_date = s_date
-            st.session_state.end_date = e_date
+                pass
+        
+        # ONLY initialize if query params are completely absent
+        if not q_start or not q_end:
+            if "start_date" not in st.session_state:
+                st.session_state.start_date = df['time'].min().date()
+                st.session_state.end_date = df['time'].max().date()
+                # Set query params for the first time
+                st.query_params["start_date"] = str(st.session_state.start_date)
+                st.query_params["end_date"] = str(st.session_state.end_date)
 
         # --- Date Selection (Moved to Top) ---
         st.divider()
         st.subheader("📅 Date Range")
-        st.date_input("Start Date", key="start_date_input", 
-                      value=st.session_state.start_date,
-                      on_change=lambda: st.session_state.update(
-                          start_date=st.session_state.start_date_input) or st.query_params.update(start_date=str(st.session_state.start_date_input)))
-        st.date_input("End Date", key="end_date_input", 
-                      value=st.session_state.end_date,
-                      on_change=lambda: st.session_state.update(
-                          end_date=st.session_state.end_date_input) or st.query_params.update(end_date=str(st.session_state.end_date_input)))
+        
+        # Dynamic keys based on current date values - forces widget recreation on date change
+        new_start = st.date_input(
+            "Start Date", 
+            key=f"sdt_{st.session_state.start_date}",
+            value=st.session_state.start_date
+        )
+        new_end = st.date_input(
+            "End Date", 
+            key=f"edt_{st.session_state.end_date}",
+            value=st.session_state.end_date
+        )
+        
+        # Update state and query params if user manually changes dates
+        if new_start != st.session_state.start_date:
+            st.session_state.start_date = new_start
+            st.query_params["start_date"] = str(new_start)
+            st.rerun()
+        if new_end != st.session_state.end_date:
+            st.session_state.end_date = new_end
+            st.query_params["end_date"] = str(new_end)
+            st.rerun()
         
         # Reset Button
         if st.button("🔄 Reset Range"):
@@ -122,8 +134,6 @@ with st.sidebar:
              st.session_state.end_date = df['time'].max().date()
              st.query_params["start_date"] = str(st.session_state.start_date)
              st.query_params["end_date"] = str(st.session_state.end_date)
-             if "start_date_input" in st.session_state: del st.session_state.start_date_input
-             if "end_date_input" in st.session_state: del st.session_state.end_date_input
              st.rerun()
 
     # Event Selection
@@ -224,10 +234,18 @@ else:
                         if desc:
                             st.markdown(f"{desc}")
                         
-                        # Footer: Source (if any)
-                        srcs = ev.get('source', [])
-                        if srcs:
-                            st.caption(f"Source ID: {', '.join(srcs[:2])}" + ("..." if len(srcs)>2 else ""))
+                        # Articles: Show linked article titles
+                        articles = ev.get('articles', [])
+                        if articles:
+                            st.caption(f"📰 Related Articles ({len(articles)}):")
+                            for art in articles[:3]:  # Limit to 3 for UI cleanliness
+                                art_title = art.get('title', 'Untitled')
+                                art_url = art.get('url', '')
+                                if art_url:
+                                    st.markdown(f"- [{art_title}]({art_url})")
+                                else:
+                                    st.markdown(f"- {art_title}")
+
         
         # Tab 2: Chat
         with tab_chat:

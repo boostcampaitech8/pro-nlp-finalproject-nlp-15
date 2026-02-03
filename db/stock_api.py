@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import streamlit as st
 from typing import Optional, Tuple
 from datetime import date
 
@@ -12,12 +13,14 @@ class StockAPI:
         if not os.path.exists(self.data_dir): return []
         return [f for f in os.listdir(self.data_dir) if f.endswith("_price.csv")]
 
-    def get_price_data(self, asset_name: str) -> pd.DataFrame:
+    @st.cache_data(ttl=3600)  # Cache for 1 hour
+    def get_price_data(_self, asset_name: str) -> pd.DataFrame:
         """
         Loads price data for a given asset from a CSV file.
         Returns a DataFrame with a 'time' column converted to datetime.
+        Note: _self prefix prevents caching issues with instance methods.
         """
-        file_path = os.path.join(self.data_dir, f"{asset_name}_price.csv")
+        file_path = os.path.join(_self.data_dir, f"{asset_name}_price.csv")
         if not os.path.exists(file_path):
             return pd.DataFrame()
         
