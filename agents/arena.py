@@ -1,71 +1,67 @@
-"""
-Interactive Arena: 사용자의 이해도에 따라 점진적으로 쉬워지는 도슨트 로직 적용
-"""
 import asyncio
 from omegaconf import DictConfig
 from .bull import BullAgent
 from .bear import BearAgent
+from core.initial_bias import determine_initial_bias
 
-async def run_interactive_arena(schema: dict, news_content: str, cfg: DictConfig) -> list[dict]:
+async def run_automated_arena(schema: dict, news_content: str, cfg: DictConfig, max_turns: int = 2) -> list[dict]:
     bull = BullAgent(cfg)
     bear = BearAgent(cfg)
     debate_log = []
+    
+    # 1. 초기 편향(Initial Bias) 결정 및 선공 정하기
+    bias = determine_initial_bias(schema)
+    print(f"\n{'='*20} [{bias.upper()} 선공] 적대적 토론 시작 {'='*20}")
 
-    print("\n" + "="*20 + " 에이전트 적대적 토론 시작 " + "="*20)
-    await asyncio.sleep(1)
+    # 2. 첫 번째 발언 (기조 연설)
+    if bias == "bull":
+        print("\n[Bull Agent] 📈 상승 시나리오를 바탕으로 기조 연설을 시작합니다...")
+        # 첫 턴이므로 opponent_arg와 history_context는 빈 값 전달
+        first_msg = await bull.argue(schema, news_content, opponent_arg="", history_context="")
+        print(f"\n[BULL]: {first_msg}") # 콘솔 출력 추가
+        debate_log.append({"role": "bull", "content": first_msg})
+    else:
+        print("\n[Bear Agent] 📉 하락 리스크를 바탕으로 경고를 시작합니다...")
+        first_msg = await bear.initial_warning(schema, news_content)
+        print(f"\n[BEAR]: {first_msg}") # 콘솔 출력 추가
+        debate_log.append({"role": "bear", "content": first_msg})
+    
+    current_rebuttal_target = first_msg
 
-    # --- Turn 1: Bull의 입장 선포 ---
-    print("\n[Bull Agent] 시장 상승 가능성을 분석 중입니다...")
-    bull_arg = await bull.argue(schema, news_content)
-    print(f"\nBull 주장 전문:\n{bull_arg}")
-    debate_log.append({"role": "bull", "content": bull_arg})
-
-    # [이해도 체크 1] 단계별 강화 로직 적용
-    n_count = 0
-    while True:
-        understand = input("\nBull의 주장이 충분히 이해되셨나요? (y/n): ").lower().strip()
-        if understand == 'y':
-            print("이해 완료. 다음 단계로 진행합니다.")
-            break
-        elif understand == 'n':
-            n_count += 1
-            # n_count에 따라 도슨트의 태도를 변경.
-            level_msg = [
-                "쉽게 풀어서 설명", 
-                "초등학생도 이해할 수 있는 비유 사용", 
-                "일상 생활의 예시를 들어 아주 천천히 설명"
-            ]
-            current_level = level_msg[min(n_count-1, len(level_msg)-1)]
+    # 3. 다회차 교차 토론 루프
+    for turn in range(1, max_turns + 1):
+        print(f"\n{'-'*15} 제 {turn} 라운드 공방 {'-'*15}")
+        
+        # 매번 현재까지의 로그를 갱신하여 에이전트에게 전달
+        history_text = "\n".join([f"{m['role'].upper()}: {m['content'][:150]}..." for m in debate_log])
+        
+        if bias == "bull":
+            # [라운드 A] Bear 반박
+            print(f"\n[Bear Agent] Bull의 논리적 허점을 공격 중...")
+            bear_msg = await bear.counter_argue(schema, news_content, current_rebuttal_target, history_text)
+            print(f"\n[BEAR]: {bear_msg}")
+            debate_log.append({"role": "bear", "content": bear_msg})
             
-            print(f"\n💡 [Docent] 사용자가 {n_count}번 이해하지 못했습니다. {current_level} 중...")
+            # [라운드 B] Bull 재반박
+            print(f"\n[Bull Agent] Bear의 공격을 방어하고 추가 호재를 제시 중...")
+            bull_msg = await bull.argue(schema, news_content, bear_msg, history_text)
+            print(f"\n[BULL]: {bull_msg}")
+            debate_log.append({"role": "bull", "content": bull_msg})
+            current_rebuttal_target = bull_msg
             
-            # Agent의 simplify 메서드에 n_count 정보를 함께 전달.
-            explanation = await bull.simplify(bull_arg, n_count=n_count)
-            print(f"\n📖 Bull 보충설명 (Level {n_count}):\n{explanation}")
         else:
-            print("⚠️ 'y' 또는 'n'으로 입력해주세요.")
-
-    # --- Turn 2: Bear의 적대적 반박 ---
-    print("\n[Bear Agent] 상대방 논리의 허점을 찾는 중입니다... (OBJECTION!)")
-    bear_arg = await bear.counter_argue(schema, news_content, bull_arg)
-    print(f"\nBear 반박 전문:\n{bear_arg}")
-    debate_log.append({"role": "bear", "content": bear_arg})
-
-    # [이해도 체크 2] 단계별 강화 로직 적용
-    n_count = 0
-    while True:
-        understand = input("\nBear의 반박 내용과 쟁점이 이해되셨나요? (y/n): ").lower().strip()
-        if understand == 'y':
-            print("이해 완료. 최종 판결 단계로 이동합니다.")
-            break
-        elif understand == 'n':
-            n_count += 1
-            print(f"\n💡 [Docent] Bear가 더욱 직관적인 근거를 보충 중입니다... (시도 {n_count}회)")
+            # [라운드 A] Bull 반박
+            print(f"\n[Bull Agent] Bear의 경고에 대해 반등 가능성을 제시 중...")
+            bull_msg = await bull.argue(schema, news_content, current_rebuttal_target, history_text)
+            print(f"\n[BULL]: {bull_msg}")
+            debate_log.append({"role": "bull", "content": bull_msg})
             
-            explanation = await bear.explain_context(bear_arg, news_content, n_count=n_count)
-            print(f"\n📖 Bear 보충설명 (Level {n_count}):\n{explanation}")
-        else:
-            print("'y' 또는 'n'으로 입력해주세요.")
+            # [라운드 B] Bear 재반박
+            print(f"\n[Bear Agent] Bull의 낙관론이 위험한 이유를 재반박 중...")
+            bear_msg = await bear.counter_argue(schema, news_content, bull_msg, history_text)
+            print(f"\n[BEAR]: {bear_msg}")
+            debate_log.append({"role": "bear", "content": bear_msg})
+            current_rebuttal_target = bear_msg
 
-    print("\n" + "="*20 + " 토론 종료. 최종 판결로 이동합니다. " + "="*20 + "\n")
+    print(f"\n{'='*20} 토론 종료 (총 {len(debate_log)}개 메시지 생성) {'='*20}\n")
     return debate_log
