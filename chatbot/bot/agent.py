@@ -1,3 +1,4 @@
+from typing import Any
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, AIMessageChunk
@@ -47,8 +48,8 @@ class FinancialAgent:
         self, 
         asset_name: str, 
         user_query: str, 
-        start_date, 
-        end_date, 
+        start_date: Any, 
+        end_date: Any, 
         chat_history: list,
         target_files: list[str] | None = None
     ):
@@ -149,7 +150,7 @@ class FinancialAgent:
             else:
                 break
     
-    def analyze_stream(self, asset_name, user_query, start_date, end_date, chat_history, target_files=None):
+    def analyze_stream(self, asset_name: str, user_query: str, start_date: Any, end_date: Any, chat_history: list, target_files: list[str] | None = None):
         """
         📋 Legacy 모드: 모든 컨텍스트를 미리 주입 (Tool Calling 없음)
         """

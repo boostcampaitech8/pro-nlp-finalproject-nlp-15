@@ -3,7 +3,7 @@ import uuid
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-from typing import List, Dict, Any, Optional
+from typing import Any
 import torch
 import time
 from dotenv import load_dotenv
@@ -54,7 +54,7 @@ class ArticleIngestor:
         else:
             print(f"Collection {self.collection_name} already exists.")
 
-    def _get_sparse_vectors(self, texts: List[str]) -> List[models.SparseVector]:
+    def _get_sparse_vectors(self, texts: list[str]) -> list[models.SparseVector]:
         inputs = self.sparse_tokenizer(texts, return_tensors="pt", padding=True, truncation=True).to(self.device)
         with torch.no_grad():
             outputs = self.sparse_model(**inputs)
@@ -74,7 +74,7 @@ class ArticleIngestor:
     def _get_point_id(self, hex_id: str) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, str(hex_id)))
 
-    def filter_existing_ids(self, ids: List[str]) -> List[int]:
+    def filter_existing_ids(self, ids: list[str]) -> list[int]:
         """Returns indices of IDs that DO NOT exist in Qdrant."""
         try:
             point_ids = [self._get_point_id(h) for h in ids]

@@ -1,10 +1,10 @@
 from langchain_core.tools import tool
-from typing import List, Dict, Optional
+from typing import Any
 
 # Module-level variable for dependency injection
-_vector_store = None
+_vector_store: Any | None = None
 
-def set_vector_store(vector_store):
+def set_vector_store(vector_store: Any) -> None:
     """Set the VectorStore instance for the tools to use."""
     global _vector_store
     _vector_store = vector_store
@@ -13,8 +13,8 @@ def set_vector_store(vector_store):
 def search_similar_articles(
     query: str, 
     top_k: int = 5, 
-    start_date: Optional[str] = None, 
-    end_date: Optional[str] = None
+    start_date: str | None = None, 
+    end_date: str | None = None
 ) -> str:
     """
     Search for news articles semantically similar to a given query or topic.
@@ -65,8 +65,8 @@ def search_similar_articles(
 def search_similar_events(
     query: str, 
     top_k: int = 5, 
-    start_date: Optional[str] = None, 
-    end_date: Optional[str] = None
+    start_date: str | None = None, 
+    end_date: str | None = None
 ) -> str:
     """
     Search for extracted events (summarized occurrences) semantically similar to a query.

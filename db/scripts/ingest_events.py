@@ -4,7 +4,7 @@ import uuid
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-from typing import List, Dict, Any, Optional
+from typing import Any
 import torch
 import time
 from datetime import datetime
@@ -84,7 +84,7 @@ class EventIngestor:
         
         print(f"Collection {self.collection_name} created with payload indexes.")
 
-    def get_existing_ids(self) -> set:
+    def get_existing_ids(self) -> set[str]:
         """Returns a set of all point IDs currently in the collection."""
         existing_ids = set()
         offset = None

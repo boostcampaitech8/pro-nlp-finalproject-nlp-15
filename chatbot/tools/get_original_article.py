@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from typing import Any, Dict, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 from db.article_repo import get_article_by_id
 

@@ -1,7 +1,6 @@
 import pandas as pd
 import os
 import streamlit as st
-from typing import Optional, Tuple
 from datetime import date
 
 class StockAPI:

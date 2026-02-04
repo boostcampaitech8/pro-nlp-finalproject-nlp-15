@@ -1,9 +1,9 @@
 import pandas as pd
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 
-def get_article_by_id(article_id: str, data_dir: str = "data/articles") -> Optional[Dict[str, Any]]:
+def get_article_by_id(article_id: str, data_dir: str = "data/articles") -> dict[str, Any] | None:
     """
     Search for an article by its hex ID in the specified directory's CSV files.
     The ID is expected to be in the 'id' column of the CSV.

@@ -2,22 +2,21 @@ import os
 import json
 import pandas as pd
 import streamlit as st
-from typing import List, Dict, Optional
 from datetime import date
 
 class NewsRepository:
-    def __init__(self, event_dir: str, article_dir: Optional[str] = None):
+    def __init__(self, event_dir: str, article_dir: str | None = None):
         self.event_dir = event_dir
         # Default: assume articles are in a sibling directory
         self.article_dir = article_dir or os.path.join(os.path.dirname(event_dir), "articles")
 
-    def get_all_files(self) -> List[str]:
+    def get_all_files(self) -> list[str]:
         """Returns list of available event files (json/jsonl)."""
         if not os.path.exists(self.event_dir): return []
         return [f for f in os.listdir(self.event_dir) if f.endswith((".json", ".jsonl"))]
 
     @st.cache_data(ttl=3600)  # Cache for 1 hour
-    def _load_articles(_article_dir: str, target_files: Optional[List[str]] = None) -> Dict[str, Dict]:
+    def _load_articles(_article_dir: str, target_files: list[str] | None = None) -> dict[str, dict]:
         """
         Loads article CSVs and returns a lookup dictionary: {article_id: article_dict}.
         If target_files is provided, only load matching article CSVs (based on filename stem).
@@ -57,7 +56,7 @@ class NewsRepository:
 
 
     @st.cache_data(ttl=3600, show_spinner="Loading events...")
-    def get_events(_self, start_date: date, end_date: date, keywords: Optional[List[str]] = None, target_files: Optional[List[str]] = None) -> List[Dict]:
+    def get_events(_self, start_date: date, end_date: date, keywords: list[str] | None = None, target_files: list[str] | None = None) -> list[dict]:
         """
         Loads event data from JSON files and filters by date and optional keywords.
         Enriches events with article metadata via source IDs.

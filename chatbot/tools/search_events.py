@@ -1,14 +1,14 @@
 from langchain_core.tools import tool
 from datetime import date
-from typing import List, Optional
 import pandas as pd
+from typing import Any
 
 # Module-level variables for dependency injection
-_news_repo = None
-_stock_api = None
-_target_files = None
+_news_repo: Any | None = None
+_stock_api: Any | None = None
+_target_files: list[str] | None = None
 
-def set_dependencies(news_repo, stock_api, target_files=None):
+def set_dependencies(news_repo: Any, stock_api: Any, target_files: list[str] | None = None) -> None:
     """Set the dependencies for the tool to use."""
     global _news_repo, _stock_api, _target_files
     _news_repo = news_repo
