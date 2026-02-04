@@ -14,6 +14,7 @@ from chatbot.tools.get_summary import get_price_summary, set_stock_api
 from chatbot.tools.search_events import search_volatility_events, set_dependencies as set_events_deps
 from chatbot.tools.vector_search import search_similar_articles, search_similar_events, set_vector_store
 from chatbot.tools.get_original_article import get_original_article
+from chatbot.tools.web_browser import extract_url_content
 
 class FinancialAgent:
     """
@@ -84,7 +85,8 @@ class FinancialAgent:
             search_volatility_events, 
             search_similar_articles, 
             search_similar_events, 
-            get_original_article
+            get_original_article,
+            extract_url_content
         ]
         llm_with_tools = self.client.bind_tools(tools)
         
@@ -133,7 +135,8 @@ class FinancialAgent:
                     'search_volatility_events': search_volatility_events,
                     'search_similar_articles': search_similar_articles,
                     'search_similar_events': search_similar_events,
-                    'get_original_article': get_original_article
+                    'get_original_article': get_original_article,
+                    'extract_url_content': extract_url_content
                 }
                 
                 for tool_call in full_response.tool_calls:
