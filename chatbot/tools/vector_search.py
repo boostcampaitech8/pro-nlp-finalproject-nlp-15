@@ -12,25 +12,37 @@ def set_vector_store(vector_store):
 @tool
 def search_similar_events(query: str, top_k: int = 5) -> str:
     """
-    Search for events semantically similar to a given query or topic.
+    Perform semantic search across ALL historical events regardless of date.
     
-    Use this tool when the user asks about:
-    - Specific topics, themes, or keywords (e.g., "tariffs", "strikes", "supply chain")
-    - Historical precedents ("Has this happened before?", "Similar situations")
-    - Comparative analysis across different time periods
-    - Thematic research (e.g., "All news about China demand")
+    📌 WHEN TO USE (Priority: MEDIUM - For thematic deep dives):
+    - User asks about a specific THEME or KEYWORD (not a date range)
+    - Looking for historical precedents or patterns
+    - Comparative analysis: "Has this happened before?"
+    - Research questions requiring topical clustering
     
-    Examples of queries:
-    - "Find events about trade wars"
-    - "Show me similar supply disruptions"
-    - "What happened with tariffs historically?"
+    📌 KEY DIFFERENCE from search_volatility_events:
+    - search_volatility_events: DATE-BOUND, finds news on volatile DAYS
+    - search_similar_events: DATE-AGNOSTIC, finds semantically similar TOPICS
+    
+    📌 EXPECTED OUTPUT:
+    - Events ranked by semantic similarity score (0.0 to 1.0)
+    - Each includes: Title, Date, Description, Similarity Score
+    - Can span multiple years if thematically related
+    
+    🔍 Example Queries:
+    - "Find all events about trade wars"
+    - "Historical supply chain disruptions"
+    - "Similar situations to the current inflation"
     
     Args:
-        query: Search query in natural language describing the topic or theme
-        top_k: Number of most similar events to return (default: 5)
+        query: Natural language description of topic/theme to search
+        top_k: Number of most similar results (default: 5, max: 20)
         
     Returns:
-        List of relevant events with similarity scores, titles, descriptions, and dates
+        Ranked list of semantically similar events with scores
+    
+    ⚠️ CURRENT STATUS:
+    Vector store is under development. Returns error if not initialized.
     """
     if _vector_store is None:
         return "Error: Vector store not initialized. Semantic search is not available yet."

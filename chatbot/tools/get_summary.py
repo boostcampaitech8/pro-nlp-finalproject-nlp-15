@@ -12,26 +12,31 @@ def set_stock_api(stock_api):
 @tool
 def get_price_summary(asset_name: str, start_date: str, end_date: str) -> str:
     """
-    Get statistical summary of asset price for a given period.
+    Retrieve statistical summary of asset price movements for analysis baseline.
     
-    Use this tool when the user asks about:
-    - Price movements (returns, gains, losses)
-    - Volatility or risk metrics
-    - Overall market performance in a specific period
-    - Price statistics or quantitative analysis
+    📌 WHEN TO USE (Priority: HIGH - Use this FIRST in most analyses):
+    - User asks about price trends, returns, or volatility
+    - Before investigating WHY prices moved (establish WHAT happened first)
+    - Comparative analysis between different time periods
     
-    Examples of queries:
+    📌 EXPECTED OUTPUT:
+    - Period return (%)
+    - Annualized volatility
+    - Starting/ending prices
+    - Date range confirmation
+    
+    🔍 Example Queries:
     - "What was the return in August 2020?"
-    - "How volatile was the market?"
-    - "Show me the price statistics"
+    - "How volatile was gold this quarter?"
+    - "Show me price statistics for last year"
     
     Args:
-        asset_name: Name of the asset (e.g., "copper", "silver")
-        start_date: Start date in YYYY-MM-DD format
-        end_date: End date in YYYY-MM-DD format
+        asset_name: Asset identifier (e.g., "copper", "silver", "gold_future")
+        start_date: Period start in YYYY-MM-DD format
+        end_date: Period end in YYYY-MM-DD format
         
     Returns:
-        Markdown-formatted price statistics including return and volatility
+        Markdown-formatted statistics including return, volatility, and price levels
     """
     if _stock_api is None:
         return "Error: StockAPI not initialized"

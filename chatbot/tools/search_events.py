@@ -23,29 +23,40 @@ def search_volatility_events(
     top_k: int = 10
 ) -> str:
     """
-    Find major news events that occurred on high volatility trading days.
+    Identify causal links between price volatility spikes and real-world news events.
     
-    Use this tool when the user asks about:
-    - Why the price moved significantly ("Why did it drop?")
-    - Major events or news in a specific period
-    - What happened on a particular date
-    - Market catalysts, drivers, or reasons for price changes
-    - Correlation between news and price movements
+    📌 WHEN TO USE (Priority: CRITICAL for "Why?" questions):
+    - User asks WHY prices moved sharply (up or down)
+    - Investigating specific market crashes, rallies, or anomalies
+    - Finding the NEWS behind the NUMBERS
     
-    Examples of queries:
-    - "Why did the price crash in March 2020?"
-    - "What events caused the volatility?"
-    - "Tell me about major news in this period"
+    📌 HOW IT WORKS:
+    1. Identifies days with highest absolute price changes in the period
+    2. Retrieves news events published on those exact dates
+    3. Returns events sorted by date with closing prices for context
+    
+    📌 EXPECTED OUTPUT:
+    - Top N events from the most volatile trading days
+    - Each event includes: Date, Closing Price, Title, Description
+    - Chronologically ordered
+    
+    🔍 Example Queries:
+    - "Why did copper crash in March 2020?"
+    - "What caused the price spike last week?"
+    - "Explain the volatility in Q4"
     
     Args:
-        asset_name: Name of the asset (e.g., "copper")
-        start_date: Start date in YYYY-MM-DD format
-        end_date: End date in YYYY-MM-DD format
-        top_k: Number of top events to return (default: 10)
+        asset_name: Asset identifier (e.g., "copper", "gold_future")
+        start_date: Period start in YYYY-MM-DD format
+        end_date: Period end in YYYY-MM-DD format
+        top_k: Max number of events to return (default: 10, range: 5-20)
         
     Returns:
-        Markdown-formatted events with dates, closing prices, titles, and descriptions,
-        filtered to only include events on the most volatile trading days
+        Markdown report of major events on high-volatility days with context
+    
+    ⚠️ LIMITATION:
+    If no events are found, it means no news was recorded on volatile days.
+    This does NOT mean there was no volatility - consider technical factors.
     """
     if _news_repo is None or _stock_api is None:
         return "Error: Dependencies not initialized"

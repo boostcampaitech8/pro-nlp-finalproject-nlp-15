@@ -77,41 +77,35 @@ class FinancialAgent:
         
         # === 2. 시스템 프롬프트 준비 ===
         # Langfuse에서 금융 분석가 페르소나 프롬프트 가져오기
-        persona_prompt = self.prompt_manager.get_persona_prompt()
+        persona_prompt = self.prompt_manager.get_system_prompt()
         persona_text = persona_prompt.compile() if hasattr(persona_prompt, "compile") else str(persona_prompt)
         
-        # 현재 분석 컨텍스트 정보 (자산, 기간, 사용 가능한 도구)
-        context_info = f"""
-You are analyzing {asset_name.upper()} from {start_date} to {end_date}.
-
-You have access to the following tools to fetch data:
-- get_price_summary: Get price statistics (return, volatility)
-- search_volatility_events: Find major events on volatile days
-- search_similar_events: Search events by topic/theme
-
-Use these tools ONLY when needed to answer the user's question.
-If the user asks about prices or returns, use get_price_summary.
-If they ask "why" or about specific events, use search_volatility_events.
-For thematic searches, use search_similar_events.
-
-IMPORTANT: The date parameters must be in YYYY-MM-DD format.
-asset_name is: {asset_name}
-start_date is: {start_date}
-end_date is: {end_date}
-"""
+        # === 3. 컨텍스트 정보 준비 (User Message에 포함될 prefix) ===
+        # 실제 asset의 가격 데이터에서 범위 계산
+        df = self.stock_api.get_price_data(asset_name)
+        if not df.empty:
+            actual_data_start = df['time'].min().strftime("%Y-%m-%d")
+            actual_data_end = df['time'].max().strftime("%Y-%m-%d")
+        else:
+            # Fallback to config
+            actual_data_start = self.cfg.system.data_range.start
+            actual_data_end = self.cfg.system.data_range.end
         
-        # === 3. 도구 바인딩 ===
+        # 컨텍스트를 자연어로 구성 (유저 메시지 prefix로 사용)
+        context_prefix = f"[현재 분석 중: {asset_name.upper()}, {start_date}~{end_date}]\n\n"
+        
+        # === 4. 도구 바인딩 ===
         # LLM에게 사용 가능한 도구 목록 제공
         tools = [get_price_summary, search_volatility_events, search_similar_events]
         llm_with_tools = self.client.bind_tools(tools)
         
-        # === 4. 메시지 구성 ===
-        # [시스템 프롬프트] + [대화 기록] + [사용자 질문]
-        # messages는 다양한 메시지 타입을 담을 수 있음
+        # === 5. 메시지 구성 ===
+        # System: 페르소나와 규칙만
+        # User: [컨텍스트] + 실제 질문
         messages: list[SystemMessage | HumanMessage | AIMessage | ToolMessage] = list([
-            SystemMessage(content=persona_text + "\n\n" + context_info)
+            SystemMessage(content=persona_text)
         ] + chat_history + [
-            HumanMessage(content=user_query)
+            HumanMessage(content=context_prefix + user_query)
         ])
         
         # === 5. Tool Calling 루프 ===
@@ -247,20 +241,12 @@ end_date is: {end_date}
         })
 
         # === 2. 프롬프트 가져오기 ===
-        langfuse_prompt = self.prompt_manager.get_persona_prompt()
+        langfuse_prompt = self.prompt_manager.get_system_prompt()
         instruction_text = langfuse_prompt.compile() if hasattr(langfuse_prompt, "compile") else str(langfuse_prompt)
         
-        # 데이터 컨텍스트 프롬프트 (Langfuse에서 관리)
-        context_prompt = self.prompt_manager.get_context_prompt()
-        if hasattr(context_prompt, "compile"):
-             data_text = context_prompt.compile(
-                asset_name=asset_name.upper(),
-                price_context=price_context,
-                event_context=event_context
-            )
-        else:
-            # Fallback: 템플릿 없으면 직접 조합
-            data_text = f"Asset: {asset_name}\nPrice Context: {price_context}\nEvents: {event_context}"
+        
+        # 데이터 컨텍스트를 직접 구성
+        data_text = f"Asset: {asset_name}\nPrice Context: {price_context}\nEvents: {event_context}"
 
         # === 3. 메시지 구성 ===
         # [페르소나] + [데이터 컨텍스트] + [대화 기록] + [사용자 질문]
