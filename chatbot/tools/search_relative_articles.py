@@ -3,21 +3,21 @@ from pydantic import BaseModel, Field
 from db.vector_store import VectorStore
 import os
 
-class RelativeEventsQuery(BaseModel):
-    """Schema for relative events semantic search."""
-    query: str = Field(..., description="The semantic search query (e.g., 'supply shortage of silver')")
-    top_k: int = Field(5, description="Number of relevant events to retrieve.")
+class RelativeArticlesQuery(BaseModel):
+    """Schema for relative articles semantic search."""
+    query: str = Field(..., description="The semantic search query (e.g., 'interest rate impact on gold')")
+    top_k: int = Field(5, description="Number of relevant articles to retrieve.")
     start_date: Optional[str] = Field(None, description="Start date for filtering in YYYY-MM-DD format (inclusive).")
     end_date: Optional[str] = Field(None, description="End date for filtering in YYYY-MM-DD format (inclusive).")
 
-def search_relative_events(
+def search_relative_articles(
     query: str, 
     top_k: int = 5, 
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Performs a semantic search to find extracted events related to the query.
+    Performs a semantic search to find news articles related to the query.
     Supports optional date range filtering.
 
     Args:
@@ -27,11 +27,11 @@ def search_relative_events(
         end_date: Optional end date (YYYY-MM-DD).
 
     Returns:
-        dict: A list of relevant events with their titles, descriptions, and durations.
+        dict: A list of relevant articles with their titles, descriptions, and publish dates.
     """
     try:
         vs = VectorStore()
-        results = vs.search_similar_events(
+        results = vs.search_similar_articles(
             query, 
             top_k=top_k, 
             start_date=start_date, 
@@ -39,11 +39,11 @@ def search_relative_events(
         )
         
         if not results:
-            return {"message": "No relevant events found for the given query and date range."}
+            return {"message": "No relevant articles found for the given query and date range."}
             
-        return {"events": results}
+        return {"articles": results}
     except Exception as e:
-        return {"error": f"Event search failed: {str(e)}"}
+        return {"error": f"Article search failed: {str(e)}"}
 
 if __name__ == "__main__":
-    print("search_relative_events tool ready.")
+    print("search_relative_articles tool ready.")

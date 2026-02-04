@@ -1,66 +1,113 @@
 from langchain_core.tools import tool
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 # Module-level variable for dependency injection
 _vector_store = None
 
 def set_vector_store(vector_store):
-    """Set the VectorStore instance for the tool to use."""
+    """Set the VectorStore instance for the tools to use."""
     global _vector_store
     _vector_store = vector_store
 
 @tool
-def search_similar_events(query: str, top_k: int = 5) -> str:
+def search_similar_articles(
+    query: str, 
+    top_k: int = 5, 
+    start_date: Optional[str] = None, 
+    end_date: Optional[str] = None
+) -> str:
     """
-    Perform semantic search across ALL historical events regardless of date.
+    Search for news articles semantically similar to a given query or topic.
+    Supports optional date range filtering.
     
-    📌 WHEN TO USE (Priority: MEDIUM - For thematic deep dives):
-    - User asks about a specific THEME or KEYWORD (not a date range)
-    - Looking for historical precedents or patterns
-    - Comparative analysis: "Has this happened before?"
-    - Research questions requiring topical clustering
-    
-    📌 KEY DIFFERENCE from search_volatility_events:
-    - search_volatility_events: DATE-BOUND, finds news on volatile DAYS
-    - search_similar_events: DATE-AGNOSTIC, finds semantically similar TOPICS
-    
-    📌 EXPECTED OUTPUT:
-    - Events ranked by semantic similarity score (0.0 to 1.0)
-    - Each includes: Title, Date, Description, Similarity Score
-    - Can span multiple years if thematically related
-    
-    🔍 Example Queries:
-    - "Find all events about trade wars"
-    - "Historical supply chain disruptions"
-    - "Similar situations to the current inflation"
+    Use this tool when the user asks about:
+    - Specific news topics, themes, or keywords (e.g., "tariffs", "strikes", "supply chain")
+    - Thematic research across news content
     
     Args:
-        query: Natural language description of topic/theme to search
-        top_k: Number of most similar results (default: 5, max: 20)
+        query: Search query in natural language
+        top_k: Number of most similar articles to return (default: 5)
+        start_date: Optional start date in YYYY-MM-DD format
+        end_date: Optional end date in YYYY-MM-DD format
         
     Returns:
-        Ranked list of semantically similar events with scores
-    
-    ⚠️ CURRENT STATUS:
-    Vector store is under development. Returns error if not initialized.
+        String containing relevant articles with similarity scores, titles, descriptions, and dates
     """
     if _vector_store is None:
-        return "Error: Vector store not initialized. Semantic search is not available yet."
+        return "Error: Vector store not initialized."
     
-    results = _vector_store.search_similar_events(query, top_k)
+    results = _vector_store.search_similar_articles(
+        query, 
+        top_k=top_k, 
+        start_date=start_date, 
+        end_date=end_date
+    )
     
     if not results:
-        return f"No similar events found for query: '{query}'"
+        return f"No similar articles found for query: '{query}' in the given date range."
+    
+    output = [f"## Articles similar to: '{query}'"]
+    for i, article in enumerate(results, 1):
+        score = article.get('score', 0)
+        title = article.get('title', 'No Title')
+        desc = article.get('description', 'No description')
+        date = article.get('date', 'Unknown date')
+        url = article.get('url', 'No URL')
+        
+        output.append(f"\n### {i}. {title} (Similarity: {score:.2f})")
+        output.append(f"- **Date**: {date}")
+        output.append(f"- **URL**: {url}")
+        output.append(f"- **Description**: {desc}")
+    
+    return "\n".join(output)
+
+@tool
+def search_similar_events(
+    query: str, 
+    top_k: int = 5, 
+    start_date: Optional[str] = None, 
+    end_date: Optional[str] = None
+) -> str:
+    """
+    Search for extracted events (summarized occurrences) semantically similar to a query.
+    Supports optional date range filtering.
+    
+    Use this tool when the user asks about:
+    - Specifically identified events or occurrences
+    - Summary of a situation or event
+    
+    Args:
+        query: Search query in natural language
+        top_k: Number of most similar events to return (default: 5)
+        start_date: Optional start date in YYYY-MM-DD format
+        end_date: Optional end date in YYYY-MM-DD format
+        
+    Returns:
+        String containing relevant events with similarity scores, titles, summaries, and durations
+    """
+    if _vector_store is None:
+        return "Error: Vector store not initialized."
+    
+    results = _vector_store.search_similar_events(
+        query, 
+        top_k=top_k, 
+        start_date=start_date, 
+        end_date=end_date
+    )
+    
+    if not results:
+        return f"No similar events found for query: '{query}' in the given date range."
     
     output = [f"## Events similar to: '{query}'"]
     for i, event in enumerate(results, 1):
         score = event.get('score', 0)
         title = event.get('title', 'No Title')
         desc = event.get('description', 'No description')
-        date = event.get('date', 'Unknown date')
+        start = event.get('start_date', 'Unknown')
+        end = event.get('end_date', 'Unknown')
         
         output.append(f"\n### {i}. {title} (Similarity: {score:.2f})")
-        output.append(f"- **Date**: {date}")
-        output.append(f"- **Description**: {desc}")
+        output.append(f"- **Duration**: {start} to {end}")
+        output.append(f"- **Summary**: {desc}")
     
     return "\n".join(output)

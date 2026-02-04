@@ -11,8 +11,8 @@ from db.vector_store import VectorStore
 # 도구 함수 임포트 (LangChain @tool 데코레이터 사용)
 from chatbot.tools.get_summary import get_price_summary, set_stock_api
 from chatbot.tools.search_events import search_volatility_events, set_dependencies as set_events_deps
-from chatbot.tools.vector_search import search_similar_events, set_vector_store
-from chatbot.tools.search_relative_events import search_relative_events # For legacy fallback/enrichment
+from chatbot.tools.vector_search import search_similar_articles, search_similar_events, set_vector_store
+from chatbot.tools.get_original_article import get_original_article
 
 class FinancialAgent:
     """
@@ -77,9 +77,14 @@ class FinancialAgent:
         # 컨텍스트를 자연어로 구성 (유저 메시지 prefix로 사용)
         context_prefix = f"[현재 분석 중: {asset_name.upper()}, {start_date}~{end_date}]\n\n"
         
-        # === 4. 도구 바인딩 ===
-        # LLM에게 사용 가능한 도구 목록 제공
-        tools = [get_price_summary, search_volatility_events, search_similar_events]
+        # === 3. 도구 바인딩 ===
+        tools = [
+            get_price_summary, 
+            search_volatility_events, 
+            search_similar_articles, 
+            search_similar_events, 
+            get_original_article
+        ]
         llm_with_tools = self.client.bind_tools(tools)
         
         # === 5. 메시지 구성 ===
@@ -125,7 +130,9 @@ class FinancialAgent:
                 tool_map = {
                     'get_price_summary': get_price_summary,
                     'search_volatility_events': search_volatility_events,
-                    'search_similar_events': search_similar_events
+                    'search_similar_articles': search_similar_articles,
+                    'search_similar_events': search_similar_events,
+                    'get_original_article': get_original_article
                 }
                 
                 for tool_call in full_response.tool_calls:
@@ -134,7 +141,7 @@ class FinancialAgent:
                     
                     if tool_name in tool_map:
                         try:
-                            tool_result = tool_map[tool_name].invoke(tool_args)
+                            tool_result = tool_map[tool_name].run(tool_args)
                             messages.append(ToolMessage(content=str(tool_result), tool_call_id=tool_call['id']))
                         except Exception as e:
                             messages.append(ToolMessage(content=f"Error: {str(e)}", tool_call_id=tool_call['id']))
@@ -150,26 +157,31 @@ class FinancialAgent:
         set_events_deps(self.news_repo, self.stock_api, target_files)
         
         # === 1. 모든 도구를 미리 실행 ===
-        price_context = get_price_summary.invoke({
+        # --- NEW: Invoke tools directly for legacy mode ---
+        price_context = get_price_summary.run({
             "asset_name": asset_name,
             "start_date": str(start_date),
             "end_date": str(end_date)
         })
-        event_context = search_volatility_events.invoke({
+        event_context = search_volatility_events.run({
             "asset_name": asset_name,
             "start_date": str(start_date),
             "end_date": str(end_date),
             "top_k": 20
         })
-        
+
         # --- NEW: Add Semantic Context if relevant to query ---
         semantic_context = ""
         if len(user_query) > 5:
-            rel_events = search_relative_events(user_query, top_k=5)
-            if "events" in rel_events and rel_events["events"]:
-                semantic_context = "\n[Semantic Related Events]\n" + "\n".join([
-                    f"- {e['date']} [{e['title']}] ({e['url']})" for e in rel_events["events"]
-                ])
+            # Using articles search for legacy context enrichment
+            rel_articles = search_similar_articles.run({
+                "query": user_query, 
+                "top_k": 5,
+                "start_date": str(start_date),
+                "end_date": str(end_date)
+            })
+            if rel_articles:
+                semantic_context = "\n[Semantic Related Context]\n" + rel_articles
 
         # === 2. 프롬프트 가져오기 ===
         langfuse_prompt = self.prompt_manager.get_system_prompt()
