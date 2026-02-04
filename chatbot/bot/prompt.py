@@ -5,10 +5,6 @@ class PromptManager:
         self.langfuse = Langfuse()
         self.cfg = cfg
     
-    def get_persona_prompt(self):
-        prompt_name = self.cfg.prompts.financial_analysis
-        return self.langfuse.get_prompt(prompt_name)
-    
-    def get_context_prompt(self):
-        prompt_name = self.cfg.prompts.financial_context
+    def get_system_prompt(self):
+        prompt_name = self.cfg.prompts.system_prompt
         return self.langfuse.get_prompt(prompt_name)
