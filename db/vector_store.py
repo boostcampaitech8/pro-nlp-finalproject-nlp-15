@@ -91,3 +91,108 @@ class VectorStore:
             }
             for hit in results.points
         ]
+    
+    def collection_exists(self, collection_name: str | None = None) -> bool:
+        """Check if collection exists."""
+        name = collection_name or self.collection_name
+        try:
+            self.client.get_collection(name)
+            return True
+        except Exception:
+            return False
+    
+    def create_collection(
+        self,
+        collection_name: str | None = None,
+        dense_vector_size: int = 1024,
+        force_recreate: bool = False
+    ) -> bool:
+        """
+        Create a Qdrant collection with hybrid (dense + sparse) vectors.
+        
+        Args:
+            collection_name: Collection name (defaults to self.collection_name)
+            dense_vector_size: Dense vector dimension (default 1024 for PIXIE-Rune)
+            force_recreate: If True, delete and recreate collection
+            
+        Returns:
+            True if created successfully
+        """
+        name = collection_name or self.collection_name
+        
+        # Delete if exists and force_recreate
+        if force_recreate and self.collection_exists(name):
+            self.client.delete_collection(name)
+            print(f"🗑️  Deleted existing collection: {name}")
+        
+        # Skip if exists
+        if self.collection_exists(name):
+            print(f"✅ Collection already exists: {name}")
+            return True
+        
+        # Create collection with hybrid vectors
+        self.client.create_collection(
+            collection_name=name,
+            vectors_config={
+                "default": models.VectorParams(
+                    size=dense_vector_size,
+                    distance=models.Distance.COSINE
+                )
+            },
+            sparse_vectors_config={
+                "sparse-text": models.SparseVectorParams()
+            }
+        )
+        
+        print(f"✅ Created collection: {name}")
+        return True
+    
+    def batch_upsert(
+        self,
+        points: List[models.PointStruct],
+        collection_name: str | None = None,
+        batch_size: int = 100
+    ) -> int:
+        """
+        Upsert points to Qdrant in batches.
+        
+        Args:
+            points: List of PointStruct objects
+            collection_name: Target collection (defaults to self.collection_name)
+            batch_size: Number of points per batch
+            
+        Returns:
+            Total number of points uploaded
+        """
+        name = collection_name or self.collection_name
+        
+        if not self.collection_exists(name):
+            raise ValueError(f"Collection '{name}' does not exist. Create it first.")
+        
+        total = len(points)
+        uploaded = 0
+        
+        for i in range(0, total, batch_size):
+            batch = points[i:i+batch_size]
+            self.client.upsert(
+                collection_name=name,
+                points=batch
+            )
+            uploaded += len(batch)
+            print(f"  📤 Uploaded {uploaded}/{total} points ({uploaded/total*100:.1f}%)")
+        
+        return uploaded
+    
+    def embed_batch_dense(self, texts: List[str]) -> List[List[float]]:
+        """Generate dense embeddings for a batch of texts."""
+        return self.dense_model.encode(texts, batch_size=32, show_progress_bar=False).tolist()
+    
+    def embed_batch_sparse(self, texts: List[str]) -> List[models.SparseVector]:
+        """Generate sparse embeddings for a batch of texts."""
+        sparse_vectors = []
+        
+        # Process in smaller batches to avoid OOM
+        for text in texts:
+            sparse_vectors.append(self._get_sparse_vector(text))
+        
+        return sparse_vectors

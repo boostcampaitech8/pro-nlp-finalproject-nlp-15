@@ -1,0 +1,23 @@
+# RAG Configuration
+
+# Chunking defaults
+default:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+# Type overrides
+overrides:
+  textbook:
+    chunk_size: 1500
+  report:
+    chunk_size: 800
+
+# Vector DB
+vector_db:
+  url: "http://lori2mai11ya.asuscomm.com:6333"
+  collection: "financial_documents"
+
+# Embedding models
+embedding:
+  dense_model: "telepix/PIXIE-Rune-Preview"
+  sparse_model: "telepix/PIXIE-Splade-Preview"
