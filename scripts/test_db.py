@@ -50,16 +50,16 @@ async def main() -> None:
 
     # 테스트용 파라미터 (필요시 종목/기간 수정)
     commodity_name = "은"  # 예시: DB에 존재하는 name_ko 값으로 변경 가능
-    start_date = "2026-01-01"
     end_date = "2026-01-15"
+    n_days = 31  # end_date 기준 과거 n일 (예: 15일 -> 01~15일)
 
-    print(f"[INFO] get_batch_fact_book 호출: 종목={commodity_name}, 기간={start_date}~{end_date}")
+    print(f"[INFO] get_batch_fact_book 호출: 종목={commodity_name}, end_date={end_date}, n_days={n_days}")
 
     # 함수 자체는 동기식이지만, 상위 파이프라인과 맞추기 위해 async main에서 실행
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         None,
-        lambda: manager.get_batch_fact_book(commodity_name, start_date, end_date),
+        lambda: manager.get_batch_fact_book(commodity_name, end_date, n_days),
     )
 
     if not result or "events" not in result:
@@ -85,9 +85,13 @@ async def main() -> None:
     else:
         print("\n[RESULT] 조건에 맞는 이벤트가 없습니다.")
 
-    # 결과 JSON 파일로 저장
+    # 결과 JSON 파일로 저장 (실제 기간은 메타데이터에서 가져옴)
+    period = meta.get("period", {})
+    period_start = period.get("start", "start")
+    period_end = period.get("end", "end")
+
     output_dir = os.path.join(project_root, "data", "fact_books")
-    file_name = f"fact_book_{commodity_name}_{start_date}_{end_date}.json"
+    file_name = f"fact_book_{commodity_name}_{period_start}_{period_end}.json"
     output_path = os.path.join(output_dir, file_name)
 
     manager.save_fact_book(result, output_path)
