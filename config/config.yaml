@@ -9,4 +9,5 @@ defaults:
   - prompts/analyst_agent@prompts  
 
 data:
-  raw_path: ${hydra:runtime.cwd}/data/sample
+  # main_test.py JSONL 로드 경로 (data/events에 jsonl 있음, sample 없으면 events 사용)
+  raw_path: ${hydra:runtime.cwd}/data/events
