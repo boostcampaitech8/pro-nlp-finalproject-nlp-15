@@ -60,7 +60,6 @@ class DocumentUploader:
             data = json.load(f)
         
         chunks = data["chunks"]
-        metadata = data["metadata"]
         print(f"  ✅ Loaded {len(chunks)} chunks")
         
         # Get resource metadata
@@ -89,8 +88,13 @@ class DocumentUploader:
         points = []
         
         for i, chunk in enumerate(chunks):
+            # Generate deterministic UUID from chunk_id string
+            import uuid
+            chunk_id_str = chunk.get("chunk_id", f"{resource_id}_chunk_{i}")
+            point_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, chunk_id_str)
+            
             point = models.PointStruct(
-                id=f"{resource_id}_chunk_{i}",
+                id=str(point_uuid),  # UUID as string
                 vector={
                     "default": dense_embeddings[i],
                     "sparse-text": sparse_embeddings[i]
@@ -100,6 +104,7 @@ class DocumentUploader:
                     **vector_payload,
                     
                     # Chunk-specific
+                    "chunk_id": chunk_id_str,  # Store original ID in payload
                     "chunk_index": i,
                     "chunk_text": chunk["text"],
                     "char_count": chunk["char_count"]

@@ -27,11 +27,51 @@ cfg = st.session_state.cfg
 
 st.set_page_config(page_title="AI Financial Intelligence", layout="wide")
 
-# --- Dependencies for UI (Chart) ---
-# StockAPI is used here only for UI/Chart rendering. 
-# The Agent has its own instance for context generation.
-stock_api = StockAPI(cfg.data.dir_path)
-news_repo = NewsRepository(cfg.data.event_result_path)
+# === PERFORMANCE OPTIMIZATION: Cache expensive resources ===
+# VectorStore loads 2 embedding models (~3-5 seconds EACH TIME without caching)
+
+@st.cache_resource
+def init_stock_api():
+    """Cache StockAPI - avoid repeated CSV file scans."""
+    return StockAPI(cfg.data.dir_path)
+
+@st.cache_resource
+def init_news_repo():
+    """Cache NewsRepository - avoid repeated JSONL file reads."""
+    return NewsRepository(cfg.data.event_result_path)
+
+@st.cache_resource
+def init_financial_agent():
+    """
+    Cache FinancialAgent - CRITICAL for performance.
+    
+    Without caching, EVERY query creates new:
+    - VectorStore (loads PIXIE-Rune: 391 weights + PIXIE-Splade: 137 weights)
+    - Takes 3-5 seconds just for model loading
+    
+    With caching: Load once, reuse forever (until app restart)
+    """
+    return FinancialAgent(cfg)
+
+# --- Dependencies ---
+stock_api = init_stock_api()
+news_repo = init_news_repo()
+
+# === EAGER LOADING: Preload ALL resources at startup ===
+# Ensures instant response when user starts chatting
+if "resources_loaded" not in st.session_state:
+    with st.spinner("⚡ Initializing StockInsight... (~5-7 seconds)"):
+        # Load Agent (triggers VectorStore + embedding models)
+        _ = init_financial_agent()
+        
+        # Preload common price data for faster first query
+        try:
+            _ = stock_api.get_price_data("silver_future")
+        except:
+            pass
+        
+        st.session_state.resources_loaded = True
+    st.success("✅ Ready! Ask me anything.", icon="🚀")
 
 # --- Initial State & Date Handling ---
 # 1. Initialize Asset & Date Range from Query Params or Defaults
@@ -132,16 +172,6 @@ with st.sidebar:
     default_matches = [f for f in all_event_files if asset_name in f]
     selected_event_files = st.multiselect("Choose Event Source", all_event_files, default=default_matches)
     
-    # Agent Mode Selection
-    st.divider()
-    st.subheader("🤖 Agent Mode")
-    use_agentic = st.toggle("🔧 Agentic Tool Calling", value=True, 
-                            help="When ON: LLM decides which tools to use.\\nWhen OFF: All context is pre-injected.")
-    if use_agentic:
-        st.caption("✅ LLM will select tools dynamically")
-    else:
-        st.caption("📋 Using legacy pre-injected context")
-
 
 # --- Main Page ---
 if df.empty:
@@ -276,44 +306,30 @@ else:
                 with chat_box:
                     st.chat_message("user").write(query)
                 
-                # Agent Init
-                agent = FinancialAgent(cfg)
+                # Get cached agent (prevents model reloading)
+                agent = init_financial_agent()
                 
                 # Capture query for nested function (type checker)
                 user_query: str = query
                 
                 with chat_box.chat_message("assistant"):
-                    # Stream response - Passing Metadata including file selection
+                    # Get date range from session state
                     start_d = st.session_state.start_date
                     end_d = st.session_state.end_date
                     
-                    # Generator wrapper to extract content from chunks
+                    # Agentic stream generator
                     def stream_content():
-                        if use_agentic:
-                            # Agentic mode: LLM decides which tools to call
-                            for chunk in agent.analyze_stream_agentic(
-                                asset_name, 
-                                user_query,  # Use captured variable
-                                start_d, 
-                                end_d, 
-                                msgs.messages, 
-                                target_files=selected_event_files
-                            ):
-                                # Agent guarantees string content
-                                if hasattr(chunk, "content") and chunk.content:
-                                    yield str(chunk.content)
-                        else:
-                            # Legacy mode: Pre-inject all context
-                            for chunk in agent.analyze_stream(
-                                asset_name, 
-                                user_query,  # Use captured variable
-                                start_d, 
-                                end_d, 
-                                msgs.messages, 
-                                target_files=selected_event_files
-                            ):
-                                if hasattr(chunk, "content") and chunk.content:
-                                    yield str(chunk.content)
+                        for chunk in agent.analyze_stream_agentic(
+                            asset_name, 
+                            user_query,  # Use captured variable
+                            start_d, 
+                            end_d, 
+                            msgs.messages, 
+                            target_files=selected_event_files
+                        ):
+                            # Agent guarantees string content
+                            if hasattr(chunk, "content") and chunk.content:
+                                yield str(chunk.content)
                     
                     # Use st.write_stream for smooth streaming
                     response = st.write_stream(stream_content())

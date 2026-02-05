@@ -23,40 +23,32 @@ def search_volatility_events(
     top_k: int = 10
 ) -> str:
     """
-    Identify causal links between price volatility spikes and real-world news events.
+    📊 VOLATILITY-DRIVEN EVENT SEARCH - Events on high price-change days
     
-    📌 WHEN TO USE (Priority: CRITICAL for "Why?" questions):
-    - User asks WHY prices moved sharply (up or down)
-    - Investigating specific market crashes, rallies, or anomalies
-    - Finding the NEWS behind the NUMBERS
+    ⭐ USE FOR PRICE MOVEMENT QUERIES - When user asks about price changes:
+    - "무슨 일이 있었어?" (general period review)
+    - "왜 가격이 올랐어/내렸어?" (explain price movements)
+    - "이 기간 주요 이벤트" (get events from most volatile days)
+    - "가격 변동 원인" (connect volatility to news)
     
-    📌 HOW IT WORKS:
-    1. Identifies days with highest absolute price changes in the period
-    2. Retrieves news events published on those exact dates
-    3. Returns events sorted by date with closing prices for context
+    ❌ DON'T USE FOR:
+    - "코로나가 미친 영향" → Use search_similar_events (theme-based search)
+    - "우크라이나 전쟁" → Use search_similar_events (topic search)
+    - Any topic/theme queries → Use search_similar_events instead
     
-    📌 EXPECTED OUTPUT:
-    - Top N events from the most volatile trading days
-    - Each event includes: Date, Closing Price, Title, Description
-    - Chronologically ordered
-    
-    🔍 Example Queries:
-    - "Why did copper crash in March 2020?"
-    - "What caused the price spike last week?"
-    - "Explain the volatility in Q4"
+    💡 HOW IT WORKS:
+    1. Identifies days with highest absolute price changes in period
+    2. Retrieves news events published on those specific dates
+    3. Returns chronologically ordered events with closing prices
     
     Args:
-        asset_name: Asset identifier (e.g., "copper", "gold_future")
+        asset_name: Asset identifier (e.g., "copper", "silver_future")
         start_date: Period start in YYYY-MM-DD format
         end_date: Period end in YYYY-MM-DD format
-        top_k: Max number of events to return (default: 10, range: 5-20)
+        top_k: Max number of events to return (default: 10)
         
     Returns:
-        Markdown report of major events on high-volatility days with context
-    
-    ⚠️ LIMITATION:
-    If no events are found, it means no news was recorded on volatile days.
-    This does NOT mean there was no volatility - consider technical factors.
+        Markdown report of major events on high-volatility days with closing prices
     """
     if _news_repo is None or _stock_api is None:
         return "Error: Dependencies not initialized"
