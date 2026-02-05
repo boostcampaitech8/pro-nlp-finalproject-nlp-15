@@ -1,7 +1,8 @@
 defaults:
   - _self_
   - llm: local
-  - db: rdb.example
+  # RDB 설정: config/db/rdb.yaml 사용
+  - db: rdb
   - prompts/schema_ie@prompts
   - prompts/bear_agent@prompts
   - prompts/bull_agent@prompts
