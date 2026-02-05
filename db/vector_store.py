@@ -96,7 +96,7 @@ class VectorStore:
                 values=sparse_vec_pt[0][nonzero_indices].tolist()
             )
 
-    def _parse_date(self, date_str: Optional[str]) -> Optional[date]:
+    def _parse_date(self, date_str: str | None) -> date | None:
         if not date_str:
             return None
         try:
@@ -112,9 +112,9 @@ class VectorStore:
         self, 
         query: str, 
         top_k: int = 5, 
-        start_date: Optional[str] = None, 
-        end_date: Optional[str] = None
-    ) -> List[Dict]:
+        start_date: str | None = None, 
+        end_date: str | None = None
+    ) -> list[dict]:
         """
         Performs a hybrid search for articles with optional date filtering.
         """
@@ -179,9 +179,9 @@ class VectorStore:
         self, 
         query: str, 
         top_k: int = 5, 
-        start_date: Optional[str] = None, 
-        end_date: Optional[str] = None
-    ) -> List[Dict]:
+        start_date: str | None = None, 
+        end_date: str | None = None
+    ) -> list[dict]:
         """
         Performs a hybrid search for events with optional date filtering.
         """

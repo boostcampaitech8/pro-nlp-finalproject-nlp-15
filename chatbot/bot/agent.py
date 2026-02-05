@@ -47,8 +47,8 @@ class FinancialAgent:
         self, 
         asset_name: str, 
         user_query: str, 
-        start_date, 
-        end_date, 
+        start_date: Any, 
+        end_date: Any, 
         chat_history: list,
         target_files: list[str] | None = None
     ):

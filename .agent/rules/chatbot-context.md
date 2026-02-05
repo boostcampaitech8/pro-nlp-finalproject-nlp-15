@@ -14,7 +14,7 @@ trigger: always_on
 ### 2.1 Tech Stacks
 
 - **Package Manager**: UV
-- **LLM**: `Gemini-3.5-flash` (혹은 `Gemini-3.0-flash`)
+- **LLM**: `Gemini-3.0-flash`
 - **LLM 프레임워크**: LangChain (OpenAI 호환 레이어 사용)
 - **설정 및 로그 관리**: Hydra (전역 설정 및 로깅 표준화)
 - **관측성 및 프롬프트 관리**: Langfuse (LLM 트레이싱 및 프롬프트 버저닝 v3 적용)
@@ -24,7 +24,7 @@ trigger: always_on
 
 ### 2.2 Coding Conventions
 
-- **Type Hinting:** 모든 함수와 메서드에 Python Type Hinting을 필수적으로 사용합니다. (Pydantic 모델 적극 활용)
+- **Type Hinting:** 모든 함수와 메서드에 PEP585, PEP604 기반의 Python Type Hinting을 필수적으로 사용합니다. (Pydantic 모델 적극 활용)
 - **Docstrings:** 모든 Tool 함수는 LLM이 이해할 수 있도록 상세한 Docstring(Google Style)을 작성해야 합니다.
 - **Tool Invocation:** 에이전트 내부에서 도구 호출 시 `.run()` 메서드를 사용하여 일관성을 유지합니다.
 

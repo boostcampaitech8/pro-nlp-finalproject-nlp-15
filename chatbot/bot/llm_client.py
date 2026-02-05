@@ -51,15 +51,15 @@ class LLMClient:
                 temperature=cfg.temperature
             )
     
-    def get_response(self, messages: list, callbacks: list | None = None) -> Any:
+    def get_response(self, messages: list[Any], callbacks: list[Any] | None = None) -> Any:
         """단일 응답 반환 (스트리밍 없음)"""
         return self.model.invoke(messages, config={"callbacks": callbacks})
 
-    def get_stream(self, messages: list, callbacks: list | None = None) -> Any:
-        """스트리밍 응답 반환"""
+    def get_stream(self, messages: list[Any], callbacks: list[Any] | None = None) -> Any:
+        # 스트리밍 응답 반환
         return self.model.stream(messages, config={"callbacks": callbacks})
     
-    def bind_tools(self, tools: list) -> Any:
+    def bind_tools(self, tools: list[Any]) -> Any:
         """
         도구를 LLM에 바인딩 (Tool Calling)
         
