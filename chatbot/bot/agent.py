@@ -16,7 +16,8 @@ from db.database import get_engine, Asset
 from chatbot.tools.get_period_overview import get_period_overview, set_dependencies as set_overview_deps
 from chatbot.tools.search_events_by_keyword import search_events_by_keyword, set_dependencies as set_event_deps
 from chatbot.tools.search_knowledge_base import search_knowledge_base, set_vector_store as set_vector_store_docs
-from chatbot.tools.web_browser import extract_url_content
+from chatbot.tools.web_search import web_search
+from chatbot.tools.extract_url_content import extract_url_content
 
 from omegaconf import DictConfig
 
@@ -127,7 +128,8 @@ class FinancialAgent:
             get_period_overview,
             search_events_by_keyword,
             search_knowledge_base,
-            extract_url_content
+            extract_url_content,
+            web_search
         ]
         llm_with_tools = self.client.bind_tools(tools)
         
@@ -193,7 +195,8 @@ class FinancialAgent:
                     'get_period_overview': get_period_overview,
                     'search_events_by_keyword': search_events_by_keyword,
                     'search_knowledge_base': search_knowledge_base,
-                    'extract_url_content': extract_url_content
+                    'extract_url_content': extract_url_content,
+                    'web_search': web_search
                 }
                 
                 for tool_call in full_response.tool_calls:

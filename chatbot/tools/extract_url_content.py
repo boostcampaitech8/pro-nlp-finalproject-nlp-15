@@ -1,5 +1,4 @@
 import re
-import time
 import requests
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
@@ -83,8 +82,7 @@ def extract_url_content(url: str) -> str:
             try:
                 soup = BeautifulSoup(html_content, "html.parser")
             except Exception:
-                soup = BeautifulSoup(html_content, "html.parser") # Fallback to same for now, bs4 usually handles it
-            
+                soup = BeautifulSoup(html_content, "html.parser") # Fallback
             for element in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
                 element.decompose()
                 
@@ -93,8 +91,6 @@ def extract_url_content(url: str) -> str:
             if article_tag:
                 article_content = article_tag.get_text(separator="\n")
             else:
-                # Use plain strings or simple filters to avoid complex overload issues if possible
-                # But regex is better. I'll use a more standard search approach.
                 article_content = ""
                 main_div = soup.find("main") or soup.find("div", role="main")
                 if main_div:
@@ -120,9 +116,3 @@ def extract_url_content(url: str) -> str:
         if "Timeout" in error_msg:
              return f"Timeout Error: The page took too long to load ({url})."
         return f"Unexpected Scraper Error: {error_msg}"
-
-if __name__ == "__main__":
-    # Test with a known URL
-    test_url = "https://www.google.com"
-    print(f"Testing Hybrid Scraper with: {test_url}")
-    print(extract_url_content.run(test_url)[:500])
