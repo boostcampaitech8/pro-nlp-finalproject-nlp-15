@@ -2,6 +2,7 @@ defaults:
   - /app@limits: limits
   - /app@system: system
   - /app@prompts: prompts
+  - /app@multi_agent_prompts: multi_agent_prompts
   - /app@assets: assets
   - /infra@data: data
   - /infra@database: database
