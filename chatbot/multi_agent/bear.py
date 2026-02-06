@@ -22,7 +22,7 @@ class BearAgent:
             SystemMessage(content=self.system_prompt),
             HumanMessage(content=user_prompt)
         ]
-        return self.llm_client.get_stream(messages)
+        return self.llm_client.get_astream(messages)
 
     async def counter_argue(self, fact_book: dict[str, Any], bull_argument: str) -> Any:
         """
@@ -37,4 +37,4 @@ class BearAgent:
             SystemMessage(content=self.system_prompt),
             HumanMessage(content=user_prompt)
         ]
-        return self.llm_client.get_stream(messages)
+        return self.llm_client.get_astream(messages)

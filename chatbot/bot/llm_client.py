@@ -58,6 +58,10 @@ class LLMClient:
     def get_stream(self, messages: list[Any], callbacks: list[Any] | None = None) -> Any:
         # 스트리밍 응답 반환
         return self.model.stream(messages, config={"callbacks": callbacks})
+
+    def get_astream(self, messages: list[Any], callbacks: list[Any] | None = None) -> Any:
+        """비동기 스트리밍 응답 반환"""
+        return self.model.astream(messages, config={"callbacks": callbacks})
     
     def bind_tools(self, tools: list[Any]) -> Any:
         """

@@ -27,4 +27,4 @@ class VerdictAgent:
             HumanMessage(content=user_prompt)
         ]
         
-        return self.llm_client.get_stream(messages)
+        return self.llm_client.get_astream(messages)
