@@ -1,17 +1,24 @@
+from typing import Any
 from datetime import datetime
+from typing import Any
 from langfuse.langchain import CallbackHandler
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, AIMessageChunk
 
 from .llm_client import LLMClient
 from .prompt import PromptManager
-from db.stock_api import StockAPI
-from db.news_repo import NewsRepository
-from db.vector_store import VectorStore
+from db.price_repo import PriceRepository
+from db.event_repo import EventRepository
+from db.article_repo import ArticleRepository
+from vector_db.vector_store import VectorStore
+from db.database import get_engine
 
 # 도구 함수 임포트 (LangChain @tool 데코레이터 사용)
 from chatbot.tools.get_period_overview import get_period_overview, set_dependencies as set_overview_deps
-from chatbot.tools.search_events_by_keyword import search_events_by_keyword, set_vector_store as set_vector_store_events
+from chatbot.tools.search_events_by_keyword import search_events_by_keyword, set_dependencies as set_event_deps
 from chatbot.tools.search_knowledge_base import search_knowledge_base, set_vector_store as set_vector_store_docs
+from chatbot.tools.web_browser import extract_url_content
+
+from omegaconf import DictConfig
 
 class FinancialAgent:
     """
@@ -19,10 +26,9 @@ class FinancialAgent:
     
     두 가지 모드 지원:
     1. analyze_stream_agentic: LLM이 필요한 도구를 동적으로 선택 (Tool Calling)
-    2. analyze_stream: 모든 컨텍스트를 미리 주입 (Legacy)
     """
     
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig):
         """
         에이전트 초기화
         
@@ -34,14 +40,26 @@ class FinancialAgent:
         self.prompt_manager = PromptManager(cfg)
         
         # 데이터 소스 초기화
-        self.stock_api = StockAPI(cfg.data.dir_path)
-        self.news_repo = NewsRepository(cfg.data.event_result_path)
-        self.vector_store = VectorStore()
+        db_cfg = cfg.get('database', {})
+        self.engine = get_engine(db_cfg)
+        self.price_repo = PriceRepository(self.engine)
+        self.event_repo = EventRepository(self.engine)
+        self.article_repo = ArticleRepository(self.engine)
+        
+        # Initialize VectorStore (shared embedding engine)
+        rag_cfg = cfg.get('rag', {})
+        vector_db_cfg = rag_cfg.get('vector_db', {})
+        self.vector_store = VectorStore(
+            qdrant_url=vector_db_cfg.get('url')
+        )
+        
+        self.kb_collection = vector_db_cfg.get('knowledge_base_collection', "knowledge_base")
+        self.event_collection = vector_db_cfg.get('event_collection', "events")
         
         # 도구에 의존성 주입
-        set_overview_deps(self.news_repo, self.stock_api)
-        set_vector_store_events(self.vector_store)
-        set_vector_store_docs(self.vector_store)
+        set_overview_deps(self.event_repo, self.price_repo)
+        set_event_deps(self.vector_store, self.article_repo, collection_name=self.event_collection)
+        set_vector_store_docs(self.vector_store, collection_name=self.kb_collection)
 
     def analyze_stream_agentic(
         self, 
@@ -49,8 +67,7 @@ class FinancialAgent:
         user_query: str, 
         start_date: Any, 
         end_date: Any, 
-        chat_history: list,
-        target_files: list[str] | None = None
+        chat_history: list[Any]
     ):
         """
         🤖 Agentic 모드: LLM이 사용자 질문에 따라 필요한 도구만 선택하여 호출
@@ -65,7 +82,7 @@ class FinancialAgent:
         
         # === 3. 컨텍스트 정보 준비 (User Message에 포함될 prefix) ===
         # 실제 asset의 가격 데이터에서 범위 계산
-        df = self.stock_api.get_price_data(asset_name)
+        df = self.price_repo.get_prices(asset_name)
         if not df.empty:
             actual_data_start = df['time'].min().strftime("%Y-%m-%d")
             actual_data_end = df['time'].max().strftime("%Y-%m-%d")
@@ -79,16 +96,17 @@ class FinancialAgent:
         
         # Construct context prefix with English labels
         context_prefix = (
-            f"[Today's Date: {today}]\n"
-            f"[Global Data Availability: {asset_name.upper()}, {actual_data_start} ~ {actual_data_end}]\n"
-            f"[User Viewing Range: {asset_name.upper()}, {start_date} ~ {end_date}]\n\n"
+            f"[Current date: {today}]\n"
+            f"[Available data range: {asset_name.upper()}, {actual_data_start} ~ {actual_data_end}]\n"
+            f"[User viewing range: {asset_name.upper()}, {start_date} ~ {end_date}]\n\n"
         )
         
         # === 4. 도구 바인딩 (Consolidated 3-tool set) ===
         tools = [
             get_period_overview,
             search_events_by_keyword,
-            search_knowledge_base
+            search_knowledge_base,
+            extract_url_content
         ]
         llm_with_tools = self.client.bind_tools(tools)
         
@@ -101,7 +119,13 @@ class FinancialAgent:
             HumanMessage(content=context_prefix + user_query)
         ])
         
-        # === 5. Tool Calling 루프 ===
+        # === 5. Langfuse Tags 자동 생성 ===
+        tags = [
+            asset_name,
+            f"{start_date}~{end_date}"
+        ]
+        
+        # === 6. Tool Calling 루프 ===
         trace_handler = CallbackHandler()
         iteration_count = 0
         max_iterations = 10
@@ -110,7 +134,12 @@ class FinancialAgent:
             iteration_count += 1
             full_response = None
             
-            for chunk in llm_with_tools.stream(messages, config={"callbacks": [trace_handler]}):
+            # config에 metadata={"langfuse_tags": tags} 추가하여 태그 전파
+            # Remove blocking synchronous callback (trace_handler) for smooth streaming
+            for chunk in llm_with_tools.stream(
+                messages, 
+                config={"metadata": {"langfuse_tags": tags}}
+            ):
                 if hasattr(chunk, "content") and chunk.content:
                     # Handle different content types
                     content = chunk.content
@@ -142,7 +171,8 @@ class FinancialAgent:
                 tool_map = {
                     'get_period_overview': get_period_overview,
                     'search_events_by_keyword': search_events_by_keyword,
-                    'search_knowledge_base': search_knowledge_base
+                    'search_knowledge_base': search_knowledge_base,
+                    'extract_url_content': extract_url_content
                 }
                 
                 for tool_call in full_response.tool_calls:
@@ -160,3 +190,24 @@ class FinancialAgent:
                 continue
             else:
                 break
+
+        # === 7. History Persistence ===
+        # Update the external chat_history with intermediate acts (Tools)
+        # We assume chatbot_app.py adds the User(query) and Final AI(response).
+        # We need to save the "Thought Process" (Tool Calls & Outputs) in between.
+        
+        # messages layout: [System, History..., User(Context), AI(Tool), Tool, ..., AI(Final)]
+        new_msgs_start_idx = 1 + len(chat_history)
+        
+        if new_msgs_start_idx < len(messages):
+            # new_interactions = [User(Context), AI(Tool), Tool, ..., AI(Final)]
+            new_interactions = messages[new_msgs_start_idx:]
+            
+            # We want to keep ONLY the intermediate steps: [AI(Tool), Tool, ...]
+            # Exclude first (User) and last (Final AI)
+            if len(new_interactions) > 2:
+                intermediate_steps = new_interactions[1:-1]
+                
+                # Append to mutable chat_history list
+                if isinstance(chat_history, list):
+                    chat_history.extend(intermediate_steps)

@@ -1,0 +1,44 @@
+assets:
+  - symbol: "COPPER"
+    name: "Copper Futures"
+    category: "Metals"
+    keywords: ["copper_silver"]
+    
+  - symbol: "SILVER"
+    name: "Silver Futures"
+    category: "Metals"
+    keywords: ["copper_silver"]
+    
+  - symbol: "GOLD"
+    name: "Gold Futures"
+    category: "Metals"
+    keywords: 
+      - "gold_future"
+      - "fomc_and_fed"
+
+  - symbol: "CORN"
+    name: "Corn Futures"
+    category: "Agricultural"
+    keywords: 
+      - "corn_and_price_or_demand_or_supply_or_inventory"
+      - "united_states_department_of_agriculture"
+      - "national_agricultural_statistics_service"
+
+  - symbol: "WHEAT"
+    name: "Wheat Futures"
+    category: "Agricultural"
+    keywords: 
+      - "wheat_and_price_or_demand_or_supply_or_inventory"
+      - "united_states_department_of_agriculture"
+      - "national_agricultural_statistics_service"
+
+  - symbol: "SOYBEAN"
+    name: "Soybean Futures"
+    category: "Agricultural"
+    keywords: 
+      - "soybean_and_price_or_demand_or_supply_or_inventory"
+      - "soy_oil_and_production_or_outputs_or_supplies_or_supply_or_biofuel_or_biodiesel_or_demand_or_price"
+      - "soybean_oil_and_production_or_outputs_or_supplies_or_supply_or_biofuel_or_biodiesel_or_demand_or_price"
+      - "soybean_production"
+      - "united_states_department_of_agriculture"
+      - "national_agricultural_statistics_service"

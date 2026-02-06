@@ -12,6 +12,8 @@ __pycache__/
 # --- Project Specific Data ---
 # 원본 데이터와 결과물 제외
 data/
+sqlite/
+prompts/
 # output 폴더 내부의 개별 데이터들은 제외하고 구조는 유지
 outputs/
 logs/

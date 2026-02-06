@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+  - /infra@data: data
+  - /infra@database: database
+  - /app@assets: assets
+
+rebuild: false
+db_path: null

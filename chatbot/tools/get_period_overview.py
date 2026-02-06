@@ -3,48 +3,51 @@ from datetime import date
 from typing import Optional
 import pandas as pd
 
-# Module-level variables for dependency injection
-_news_repo = None
-_stock_api = None
-_target_files = None
+from vector_db.resource_manager import ResourceManager
+from db.price_repo import PriceRepository
+from db.event_repo import EventRepository
 
-def set_dependencies(news_repo, stock_api, target_files=None):
+# Module-level variables for dependency injection
+_event_repo: Optional[EventRepository] = None
+_price_repo: Optional[PriceRepository] = None
+
+def set_dependencies(event_repo: EventRepository, price_repo: PriceRepository):
     """Set the dependencies for the tool to use."""
-    global _news_repo, _stock_api, _target_files
-    _news_repo = news_repo
-    _stock_api = stock_api
-    _target_files = target_files
+    global _event_repo, _price_repo
+    _event_repo = event_repo
+    _price_repo = price_repo
 
 @tool
 def get_period_overview(
-    asset_name: str, 
+    asset_symbol: str, 
     start_date: str, 
     end_date: str, 
     top_k: int = 8
 ) -> str:
     """
-    특정 기간에 대한 가격 흐름, 통계, 주요사건 요약. 
-    유저가 특정 기간이나 사건, 키워드를 명시하지 않고 전반적인 시장 상황을 설명해달라고 할 때 사용합니다.
+    Provide a comprehensive overview of price trends, statistics, and major market events for a specific period.
+    Use this tool when the user asks for a general market summary or "what happened" during a timeframe 
+    without specifying exact keywords or events.
     
     Args:
-        asset_name: 자산 이름 (예: "silver_future", "copper")
-        start_date: 분석 시작일 (YYYY-MM-DD)
-        end_date: 분석 종료일 (YYYY-MM-DD)
-        top_k: 반환할 주요 이벤트 최대 개수
+        asset_symbol: The asset identifier (e.g., "silver_future", "copper").
+        start_date: The start date for analysis (YYYY-MM-DD).
+        end_date: The end date for analysis (YYYY-MM-DD).
+        top_k: The maximum number of high-volatility events to return.
     """
-    if _news_repo is None or _stock_api is None:
+    if _event_repo is None or _price_repo is None:
         return "Error: Dependencies not initialized"
     
     # Parse dates
     s_date = date.fromisoformat(start_date)
     e_date = date.fromisoformat(end_date)
     
-    output = [f"# {asset_name} Analysis: {start_date} ~ {end_date}\n"]
+    output = [f"# {asset_symbol} Analysis: {start_date} ~ {end_date}\n"]
     
     # ======= PART 1: PRICE SUMMARY =======
     output.append("## Price Summary\n")
     try:
-        price_summary = _stock_api.get_price_summary(asset_name, s_date, e_date)
+        price_summary = _price_repo.get_summary(asset_symbol, s_date, e_date)
         output.append(price_summary)
     except Exception as e:
         output.append(f"Price data retrieval failed: {str(e)}")
@@ -55,7 +58,7 @@ def get_period_overview(
     output.append("## Major Events (High Volatility)\n")
     
     # Get price data for volatility analysis
-    df = _stock_api.get_price_data(asset_name)
+    df = _price_repo.get_prices(asset_symbol)
     if df.empty:
         output.append("No price data available for event search.")
         return "\n".join(output)
@@ -76,8 +79,8 @@ def get_period_overview(
     # Change% map for displaying alongside events
     change_map = period_df.set_index(period_df['time'].dt.date)['pct_change'].to_dict()
     
-    # Get events
-    all_events = _news_repo.get_events(s_date, e_date, target_files=_target_files)
+    # Get events filtered by asset via many-to-many relationship
+    all_events = _event_repo.search_events(s_date, e_date, asset_symbol=asset_symbol)
     
     # Filter events by high volatility dates
     filtered_events = []
@@ -115,7 +118,19 @@ def get_period_overview(
         
         output.append(f"### {d}{change_str}")
         output.append(f"**{t}**")
-        output.append(f"{desc}\n")
+        output.append(f"{desc}")
+        
+        # Add source URLs with Titles if available
+        articles = ev.get('articles', [])
+        if articles:
+             # articles is a list of dicts with 'url', 'title'
+             for a in articles[:3]: # Limit to top 3
+                 url = a.get('url')
+                 if url:
+                     title = a.get('title', 'Link')
+                     output.append(f"- Source: [{title}]({url})")
+        
+        output.append("") # Newline
     
     return "\n".join(output)
 

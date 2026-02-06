@@ -1,252 +1,87 @@
-# 📊 Financial Event Analysis Chatbot
+# 🌐 AI Financial Intelligence (Tilda Data)
 
-주식 시장 뉴스 기반 사건 추출 및 심층 분석 AI 챗봇
+본 프로젝트는 **주식/원자재 시장 뉴스 기반 사건 추출 및 심층 분석 챗봇**입니다. 2017~2025년 뉴스 데이터를 바탕으로 '사건(Event)' 중심의 맥락을 제공하고, RAG(검색 증강 생성) 및 Qdrant 하이브리드 검색을 통해 정교한 금융 도메인 질문에 답변합니다.
 
-## 🎯 프로젝트 개요
-
-2017~2025년 뉴스 데이터를 기반으로 **"사건" 중심의 맥락**을 제공하고, RAG(검색 증강 생성)를 통해 근거 있는 금융 정보를 답변하는 대화형 분석 시스템입니다.
-
-### 주요 기능
-
-- 📈 **인터랙티브 차트**: 드래그하여 기간 선택, 실시간 데이터 업데이트
-- 📰 **이벤트 타임라인**: 고변동성 날짜의 주요 뉴스 사건 자동 필터링
-- 🤖 **AI 분석가**: 시장 데이터와 뉴스를 결합한 컨텍스트 기반 질의응답
-- 🎨 **직관적 UI**: Streamlit 기반의 깔끔한 웹 인터페이스
-
----
-
-## 🚀 빠른 시작
+## 🚀 Quick Start
 
 ### 1. 환경 설정
+본 프로젝트는 `uv`를 패키지 매니저로 사용합니다.
 
 ```bash
-# 저장소 클론
-git clone <repository-url>
-cd tilda_data
-
-# UV 패키지 매니저 설치 (없는 경우)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 # 의존성 설치
 uv sync
+
+# 환경 변수 설정 (.env 파일 생성)
+# GOOGLE_API_KEY, QDRANT_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY 등
+cp .env.example .env
 ```
 
-### 2. 환경 변수 설정
-
-`.env` 파일을 생성하고 API 키를 설정합니다:
-
-```bash
-# LLM API Keys
-GOOGLE_API_KEY=your_gemini_api_key
-OPENAI_API_KEY=your_openai_api_key  # 선택
-
-# Langfuse (프롬프트 관리)
-LANGFUSE_PUBLIC_KEY=your_public_key
-LANGFUSE_SECRET_KEY=your_secret_key
-LANGFUSE_HOST=https://cloud.langfuse.com
-```
-
-### 3. 데이터 준비
-
-다음 구조로 데이터를 배치합니다:
-
-```
-data/
-├── prices/          # 주가 CSV 파일
-│   └── copper_price.csv
-├── events/          # 사건 JSON/JSONL 파일
-│   └── copper_silver.jsonl
-└── articles/        # 기사 CSV 파일
-    └── copper_silver.csv
-```
-
-### 4. 실행
-
+### 2. 애플리케이션 실행
 ```bash
 uv run streamlit run app/chatbot_app.py
 ```
 
-브라우저에서 `http://localhost:8501` 접속
-
 ---
 
-## 🏗️ 프로젝트 구조
+## 🛠️ Data Pipeline & Workflows
 
-```
-.
-├── app/                      # 🎨 UI Layer
-│   └── chatbot_app.py       # Streamlit 메인 애플리케이션
-├── chatbot/                  # 🧠 Intelligence & Action Layer
-│   ├── bot/                 # 챗봇 핵심 로직
-│   │   ├── agent.py        # FinancialAgent (오케스트레이션)
-│   │   ├── llm_client.py   # LLM 호출 추상화
-│   │   └── prompt.py       # Langfuse 프롬프트 관리
-│   └── tools/               # 에이전트 도구
-│       ├── get_summary.py  # 가격 통계 요약
-│       └── search_events.py # 이벤트 검색
-├── db/                       # 💾 Data Layer
-│   ├── stock_api.py         # 주가 데이터 조회
-│   ├── news_repo.py         # 뉴스/사건 조회
-│   └── vector_store.py      # 벡터 검색 (예정)
-├── config/                   # ⚙️ Configuration
-│   ├── chatbot.yaml         # 챗봇 설정
-│   └── llm/                 # LLM 제공자별 설정
-└── data/                     # 📁 Data Files
+데이터 구축 및 인덱싱을 위한 워크플로우 가이드입니다.
+
+### 1. RDB 데이터 임포트 (SQLite/MySQL)
+기본적으로 SQLite를 로컬 모드로 사용합니다. 로컬 CSV/JSONL 데이터를 데이터베이스로 가져옵니다.
+```bash
+# 1. 인제스트 실행 (자동으로 sqlite/ 폴더에 DB 생성)
+uv run python workflow/run_ingest_raw.py
+
+# 2. (선택) DB 초기화 및 다시 구축 시
+uv run python workflow/run_ingest_raw.py rebuild=true
 ```
 
----
+### 2. 지식 베이스(KB) 인덱싱
+PDF나 보고서 데이터를 청킹하고 Qdrant 벡터 DB로 업로드합니다.
+```bash
+# 청킹 (Chuncking)
+uv run python workflow/run_kb_chunking.py resource_id=commodity_markets_2022
 
-## 🛠️ 기술 스택
-
-### Core
-- **UI**: Streamlit
-- **LLM**: Gemini 2.0 Flash / OpenAI GPT
-- **LLM Framework**: LangChain
-- **Configuration**: Hydra
-- **Observability**: Langfuse
-
-### Data & Visualization
-- **Data Processing**: Pandas
-- **Charts**: Plotly
-- **State Management**: Streamlit Session State + Query Params
-
-### Future
-- **Vector DB**: Qdrant (계획)
-- **API**: FastAPI (계획)
-
----
-
-## 📚 아키텍처
-
-### 4계층 구조
-
-```
-┌─────────────────────────────────────┐
-│  UI Layer (app/)                    │  ← 사용자 인터페이스
-├─────────────────────────────────────┤
-│  Intelligence Layer (chatbot/bot/)  │  ← LLM 호출 & 에이전트
-├─────────────────────────────────────┤
-│  Action Layer (chatbot/tools/)      │  ← 도구 실행
-├─────────────────────────────────────┤
-│  Data Layer (db/)                   │  ← 데이터 조회 & 캐싱
-└─────────────────────────────────────┘
+# 인덱싱 (Embedding & Upsert)
+uv run python workflow/run_kb_indexing.py resource_id=commodity_markets_2022
 ```
 
-### 핵심 컴포넌트
-
-#### 🎨 UI Layer: `chatbot_app.py`
-- 자산 선택, 날짜 범위 관리
-- 인터랙티브 차트 (드래그로 기간 선택)
-- 이벤트 타임라인 표시
-- AI 챗봇 인터페이스
-
-#### 🧠 Intelligence Layer: `FinancialAgent`
-- 사용자 쿼리 처리
-- 컨텍스트 생성 (가격 + 이벤트)
-- LLM 응답 스트리밍
-
-#### 🔧 Action Layer: Tools
-- **GetSummaryTool**: 기간 수익률, 변동성 계산
-- **SearchEventsTool**: 고변동성 날짜의 이벤트 필터링
-
-#### 💾 Data Layer
-- **StockAPI**: 주가 데이터 (캐싱)
-- **NewsRepository**: 이벤트 + 기사 데이터 (캐싱)
-
----
-
-## 💡 주요 기능 설명
-
-### 1. 인터랙티브 차트 선택
-
-차트에서 드래그하여 날짜 범위를 선택하면:
-- 사이드바 날짜 입력이 **즉시 업데이트**
-- 이벤트 타임라인이 해당 기간으로 **자동 필터링**
-- URL Query Params에 상태 저장 (새로고침해도 유지)
-
-**기술 포인트**:
-- Query Params = 단일 진실 공급원 (URL 영속성)
-- 동적 위젯 키 (`key=f"sdt_{date}"`)로 즉시 렌더링
-
-### 2. 고변동성 이벤트 필터링
-
-AI 챗봇은 단순히 모든 뉴스를 나열하지 않고:
-1. 주가 데이터에서 **변동성 계산**
-2. 가장 volatile한 날짜 추출
-3. **해당 날짜의 이벤트만** 컨텍스트로 제공
-
-→ 관련성 높은 정보만 LLM에 전달 (토큰 효율↑)
-
-### 3. 프롬프트 버저닝 (Langfuse)
-
-프롬프트는 코드가 아닌 **Langfuse Web UI**에서 관리:
-- 버전 관리 및 A/B 테스트
-- 프롬프트 변경 시 코드 재배포 불필요
-- Human-Driven Development
-
----
-
-## 🎨 사용 예시
-
-### 1. 차트에서 급락 구간 드래그
-```
-사용자: 차트에서 2020년 3월 드래그
-→ 사이드바 날짜: 2020-03-01 ~ 2020-03-31 자동 업데이트
-→ 이벤트 타임라인: COVID-19 관련 뉴스 표시
-```
-
-### 2. AI에게 질문
-```
-사용자: "2020년 3월 급락 원인은?"
-AI: "주요 원인은 COVID-19 팬데믹입니다. 
-     - 3월 11일: WHO 팬데믹 선언 (종가 -8.2%)
-     - 3월 16일: 연준 긴급 금리 인하 (종가 +5.1%)
-     ..."
+### 3. 뉴스 사건(Event) 벡터 인덱싱
+추출된 사건 데이터를 검색 가능하도록 Qdrant에 인덱싱합니다.
+```bash
+uv run python workflow/run_index_events.py
 ```
 
 ---
 
-## ⚙️ 설정
+## 🏗️ Architecture & Configuration
 
-### LLM 제공자 변경
+프로젝트는 유지보수성과 확장성을 위해 **계층형 아키텍처(Layered Architecture)**를 채택하고 있습니다.
 
-`config/chatbot.yaml`:
+- **UI Layer (`app/`)**: Streamlit 기반 대시보드 및 챗봇 인터페이스.
+- **Intelligence Layer (`chatbot/bot/`)**: `FinancialAgent`를 통한 사고 흐름 제어.
+- **Action Layer (`chatbot/tools/`)**: 가격 요약, 사건 검색, 지식 베이스 검색 등 구체적 기능 단위 도구.
+- **Data Layer (`db/`, `vector_db/`)**: 
+  - **SQLite (Default)**: `sqlite/stockinfo.db`에서 가격, 사건, 기사 관리.
+  - **MySQL**: 프로덕션용 데이터베이스 지원.
+  - **Qdrant**: 하이브리드 검색을 위한 벡터 저장소.
 
-```yaml
-llm:
-  provider: gemini  # gemini / openai / local 선택
-```
-
-### 프롬프트 관리
-
-Langfuse Web UI에서:
-1. `financial_analyst_v1`: 페르소나 프롬프트
-2. `market_data_context_v1`: 데이터 컨텍스트 템플릿
-
-프롬프트 변경 후 즉시 반영 (재배포 불필요)
+상세 아키텍처는 [ARCHITECTURE.md](docs/ARCHITECTURE.md)를, 설정 방법은 [CONFIG_GUIDE.md](docs/CONFIG_GUIDE.md)를 참조하세요.
 
 ---
 
-## 🚧 개발 로드맵
+## 🔑 Key Features
 
-- [ ] **Vector DB 통합**: Qdrant를 사용한 의미 검색
-- [ ] **FastAPI 서빙**: REST API 제공
-- [ ] **실시간 데이터**: 외부 API 연동
-- [ ] **멀티 자산 분석**: 포트폴리오 비교 기능
-
----
-
-## 📖 상세 문서
-
-더 자세한 아키텍처 정보는 다음 문서를 참고하세요:
-- [Architecture Documentation](docs/ARCHITECTURE.md)
+- **Hybrid Search**: PIXIE-Rune(Dense) + PIXIE-Splade(Sparse) 모델 결합 검색.
+- **Agentic Workflow**: LLM이 상황에 맞는 도구를 선택하여 실시간 시장 상황과 과거 지식을 결합.
+- **Performance Optimization**: N+1 쿼리 해결 및 자산/기사 캐싱을 통한 빠른 UI 응답성.
+- **Observability**: Langfuse 연동을 통한 모든 LLM 호출 트레이싱 및 프롬프트 관리.
+- **Optimized Ingestion**: 벌크 인서트(Bulk Insert) 및 `tqdm` 진행도 표시를 통한 고속 데이터 로딩.
+- **Path Modularity**: Hydra 설정을 통한 모든 경로 및 환경 설정의 유연한 관리.
+- **Metadata Caching**: 자산 및 기사 조회 성능 최적화.
 
 ---
 
-## 🤝 기여
-
-이슈 및 PR은 언제나 환영합니다!
-
-## 📄 라이선스
-
-MIT License
+## 📝 License
+Copyright (c) 2026. DeepMind Advanced Agentic Coding Team & Boostcamp NLP-15.

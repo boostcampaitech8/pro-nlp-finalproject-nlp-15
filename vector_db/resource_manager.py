@@ -17,29 +17,45 @@ from typing import Any
 class ResourceManager:
     """Manages RAG document resources and their metadata."""
     
-    def __init__(self, manifest_path: str | None = None, rag_config_path: str | None = None):
+    def __init__(
+        self, 
+        manifest_path: str | Path | None = None, 
+        rag_config_path: str | Path | None = None,
+        rag_config: dict[str, Any] | None = None
+    ):
         """
         Initialize ResourceManager.
         
         Args:
             manifest_path: Path to manifest.json. Defaults to data/resources/manifest.json
-            rag_config_path: Path to rag.yaml. Defaults to config/rag.yaml
+            rag_config_path: Path to rag.yaml. Defaults to config/rag/default.yaml
+            rag_config: Optional pre-loaded configuration (Hydra DictConfig or dict)
         """
         if manifest_path is None:
             # Default to project root / data / resources / manifest.json
             manifest_path = Path(__file__).parent.parent / "data" / "resources" / "manifest.json"
         
         if rag_config_path is None:
-            # Default to project root / config / rag.yaml
-            rag_config_path = Path(__file__).parent.parent / "config" / "rag.yaml"
+            # Default to project root / config / rag / default.yaml
+            rag_config_path = Path(__file__).parent.parent / "config" / "rag" / "default.yaml"
         
         self.manifest_path = Path(manifest_path)
         self.rag_config_path = Path(rag_config_path)
         self.manifest_data: dict[str, Any] = {}
-        self.rag_config: dict[str, Any] = {}
+        self.rag_config: dict[str, Any] = rag_config or {}
         
         self.load_manifest()
-        self.load_rag_config()
+        
+        # If rag_config is a DictConfig, convert it to a plain dict
+        if self.rag_config and not isinstance(self.rag_config, dict):
+            from omegaconf import OmegaConf, DictConfig
+            self.rag_config = OmegaConf.to_container(self.rag_config, resolve=True)
+            
+        if not self.rag_config:
+            self.load_rag_config()
+        elif not isinstance(self.rag_config, dict):
+            # Final safety check
+            self.rag_config = dict(self.rag_config)
     
     def load_manifest(self) -> dict[str, Any]:
         """Load manifest.json file."""
@@ -52,15 +68,26 @@ class ResourceManager:
         return self.manifest_data
     
     def load_rag_config(self) -> dict[str, Any]:
-        """Load rag.yaml configuration file."""
+        """Load RAG configuration from file."""
+        if self.rag_config is not None and not isinstance(self.rag_config, dict):
+            from omegaconf import OmegaConf, DictConfig
+            from typing import cast
+            container = OmegaConf.to_container(cast(DictConfig, self.rag_config), resolve=True)
+            if isinstance(container, dict):
+                self.rag_config = cast(dict[str, Any], container)
+            else:
+                self.rag_config = {}
+            return self.rag_config
+
         if not self.rag_config_path.exists():
-            # Fallback to default config if file doesn't exist
+            # Fallback
             self.rag_config = {
                 "default": {
                     "chunk_size": 1000,
                     "chunk_overlap": 200,
-                    "embedding_model": "text-embedding-3-small",
-                    "vector_collection": "financial_documents"
+                    "embedding": {
+                        "dense_model": "telepix/PIXIE-Rune-Preview"
+                    }
                 }
             }
             return self.rag_config

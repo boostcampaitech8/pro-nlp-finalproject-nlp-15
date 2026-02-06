@@ -15,7 +15,8 @@ overrides:
 # Vector DB
 vector_db:
   url: "http://lori2mai11ya.asuscomm.com:6333"
-  collection: "financial_documents"
+  knowledge_base_collection: "knowledge_base_yejoon"
+  event_collection: "events_yejoon"
 
 # Embedding models
 embedding:

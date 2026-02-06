@@ -1,19 +1,13 @@
-"""
-Improved Financial Document Chunking with Markdown parsing and content filtering.
-
-Uses pymupdf4llm for better structure preservation and filters out noise.
-"""
-
 import json
 import re
 from pathlib import Path
 from typing import Any
+from vector_db.resource_manager import ResourceManager
 
 try:
     import pymupdf4llm
 except ImportError:
     raise ImportError("pymupdf4llm not installed. Run: uv add pymupdf4llm")
-
 
 class ContentFilter:
     """Filter to identify and skip non-content sections."""
@@ -37,12 +31,6 @@ class ContentFilter:
     def is_main_content(cls, text: str) -> bool:
         """
         Check if text is main content (not TOC, preface, etc).
-        
-        Args:
-            text: Text to check
-            
-        Returns:
-            True if main content, False if should be skipped
         """
         if not text or len(text.strip()) < 50:
             return False
@@ -61,78 +49,40 @@ class ContentFilter:
         
         return True
 
-
 class MarkdownPDFParser:
     """PDF parser using pymupdf4llm for markdown conversion."""
     
     @staticmethod
     def parse(pdf_path: Path, page_range: dict[str, int] | None = None) -> str:
-        """
-        Parse PDF to markdown with structure preservation.
-        
-        Args:
-            pdf_path: Path to PDF file
-            page_range: Optional dict with 'start' and 'end' page numbers (1-indexed)
-            
-        Returns:
-            Full markdown text
-        """
-        print(f"  🔍 Parsing PDF with markdown support...")
-        
+        """Parse PDF to markdown with structure preservation."""
         # Convert PDF to markdown with optional page range
         if page_range:
             start = page_range.get("start", 1) - 1  # Convert to 0-indexed
             end = page_range.get("end")
             pages = list(range(start, end)) if end else None
-            
-            print(f"  📄 Using page range: {page_range['start']}-{page_range.get('end', 'end')}")
             md_text = pymupdf4llm.to_markdown(str(pdf_path), pages=pages)
         else:
             md_text = pymupdf4llm.to_markdown(str(pdf_path))
         
-        print(f"  ✅ Parsed {len(md_text)} characters as markdown")
-        return md_text
+        if isinstance(md_text, list):
+            # If pymupdf4llm returns chunks (list[dict]), join them
+            return "\n\n".join([chunk.get("text", "") for chunk in md_text if isinstance(chunk, dict)])
+            
+        return str(md_text)
     
     @staticmethod
     def filter_content(md_text: str) -> str:
-        """
-        Light filtering to remove obvious non-content.
-        
-        Note: With page_range, most filtering is already done.
-        This just removes any remaining noise patterns.
-        
-        Args:
-            md_text: Full markdown text
-            
-        Returns:
-            Filtered markdown text
-        """
-        # With page range filtering, we can be very conservative
-        # Just remove completely empty sections
+        """Light filtering to remove obvious non-content."""
         lines = md_text.split('\n')
         filtered_lines = [line for line in lines if line.strip()]
-        
         return '\n'.join(filtered_lines)
-
 
 class TextChunker:
     """Smart text chunking with markdown structure awareness."""
     
     @staticmethod
     def chunk(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
-        """
-        Chunk markdown text respecting structure.
-        
-        Tries to split on markdown headers first, then sentences.
-        
-        Args:
-            text: Markdown text to chunk
-            chunk_size: Target chunk size in characters
-            chunk_overlap: Overlap between chunks
-            
-        Returns:
-            List of text chunks
-        """
+        """Chunk markdown text respecting structure."""
         if len(text) <= chunk_size:
             return [text]
         
@@ -165,11 +115,10 @@ class TextChunker:
         
         return chunks
 
-
 class FinancialDocumentChunker:
     """Main chunker for financial documents with improved parsing."""
     
-    def __init__(self, resource_manager):
+    def __init__(self, resource_manager: ResourceManager):
         self.manager = resource_manager
         self.parser = MarkdownPDFParser()
         self.chunker = TextChunker()
@@ -179,16 +128,7 @@ class FinancialDocumentChunker:
         resource_id: str, 
         output_dir: Path
     ) -> dict[str, Any]:
-        """
-        Chunk a financial document resource.
-        
-        Args:
-            resource_id: Resource ID from manifest
-            output_dir: Directory to save chunks
-            
-        Returns:
-            Dict with chunk data and metadata
-        """
+        """Chunk a financial document resource."""
         # Get resource and config
         resource = self.manager.get_resource(resource_id)
         if not resource:
@@ -202,10 +142,6 @@ class FinancialDocumentChunker:
         if not pdf_path or not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
         
-        print(f"\n📄 Processing: {resource['title']}")
-        print(f"  PDF: {pdf_path.name}")
-        print(f"  Config: chunk_size={rag_config['chunk_size']}, overlap={rag_config['chunk_overlap']}")
-        
         # Get page range if specified
         page_range = resource.get("content_pages")
         
@@ -213,12 +149,9 @@ class FinancialDocumentChunker:
         md_text = self.parser.parse(pdf_path, page_range=page_range)
         
         # Filter content
-        print(f"  🧹 Filtering non-content sections...")
         filtered_text = self.parser.filter_content(md_text)
-        print(f"  ✅ Filtered: {len(md_text)} → {len(filtered_text)} chars")
         
         # Chunk the filtered markdown
-        print("  ✂️  Chunking with markdown structure...")
         text_chunks = self.chunker.chunk(
             filtered_text,
             rag_config["chunk_size"],
@@ -240,8 +173,6 @@ class FinancialDocumentChunker:
             }
             all_chunks.append(chunk_data)
         
-        print(f"  ✅ Created {len(all_chunks)} high-quality chunks")
-        
         # Prepare output
         output_data = {
             "resource_id": resource_id,
@@ -254,10 +185,10 @@ class FinancialDocumentChunker:
         }
         
         # Save JSON
+        output_dir.mkdir(exist_ok=True, parents=True)
         output_json = output_dir / f"{resource_id}_chunks.json"
         with open(output_json, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
-        print(f"  💾 Saved: {output_json}")
         
         # Save markdown preview
         self._save_preview(output_data, output_dir)
@@ -280,21 +211,14 @@ class FinancialDocumentChunker:
             f.write(f"**Total Chunks**: {len(chunks)}\n\n")
             f.write("---\n\n")
             
-            # Show first 10 chunks (full text to observe overlap)
+            # Show first 10 chunks
             preview_count = min(10, len(chunks))
             for i, chunk in enumerate(chunks[:preview_count]):
                 f.write(f"## Chunk {i+1} ({chunk['char_count']} chars)\n\n")
-                
-                # Show full chunk text (no truncation)
                 f.write(f"```markdown\n{chunk['text']}\n```\n\n")
-                
-                # Show overlap indicator
                 if i < preview_count - 1:
                     f.write(f"**→ Next chunk overlaps by {output_data['config']['chunk_overlap']} chars**\n\n")
-                
                 f.write("---\n\n")
             
             if len(chunks) > preview_count:
                 f.write(f"\n*... and {len(chunks) - preview_count} more chunks*\n")
-        
-        print(f"  📋 Preview: {output_md}")

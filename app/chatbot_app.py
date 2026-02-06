@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import plotly.graph_objects as go
-import plotly.graph_objects as go
 from hydra import initialize, compose
 from hydra.core.global_hydra import GlobalHydra
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
@@ -14,8 +13,9 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 # --- New Module Imports ---
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from chatbot.bot.agent import FinancialAgent
-from db.stock_api import StockAPI
-from db.news_repo import NewsRepository
+from db.price_repo import PriceRepository
+from db.event_repo import EventRepository
+from db.database import get_engine
 
 # --- Hydra Init ---
 if "cfg" not in st.session_state:
@@ -31,47 +31,88 @@ st.set_page_config(page_title="AI Financial Intelligence", layout="wide")
 # VectorStore loads 2 embedding models (~3-5 seconds EACH TIME without caching)
 
 @st.cache_resource
+def get_shared_engine():
+    """Cache the SQLAlchemy engine with central config."""
+    db_cfg = cfg.get('database', {})
+    return get_engine(db_cfg)
+
+@st.cache_resource
 def init_stock_api():
     """Cache StockAPI - avoid repeated CSV file scans."""
-    return StockAPI(cfg.data.dir_path)
+    return PriceRepository(get_shared_engine())
 
 @st.cache_resource
 def init_news_repo():
     """Cache NewsRepository - avoid repeated JSONL file reads."""
-    return NewsRepository(cfg.data.event_result_path)
+    return EventRepository(get_shared_engine())
 
 @st.cache_resource
 def init_financial_agent():
-    """
-    Cache FinancialAgent - CRITICAL for performance.
-    
-    Without caching, EVERY query creates new:
-    - VectorStore (loads PIXIE-Rune: 391 weights + PIXIE-Splade: 137 weights)
-    - Takes 3-5 seconds just for model loading
-    
-    With caching: Load once, reuse forever (until app restart)
-    """
+    """Cache FinancialAgent - CRITICAL for performance."""
     return FinancialAgent(cfg)
+
+# --- Chat Fragment (Isolates UI Reruns) ---
+@st.fragment
+def chat_interface(asset_name: str, start_date: Any, end_date: Any):
+    """
+    Renders the chat interface in an isolated fragment.
+    This prevents the main chart and timeline from re-rendering on every message.
+    """
+    msgs = StreamlitChatMessageHistory(key="chat_messages")
+    
+    # History Sync (Asset change check)
+    if "last_asset_fragment" not in st.session_state or st.session_state.last_asset_fragment != asset_name:
+        msgs.clear()
+        st.session_state.last_asset_fragment = asset_name
+
+    # Chat UI container
+    chat_box = st.container(height=750)
+    for msg in msgs.messages:
+        chat_box.chat_message(msg.type).write(msg.content)
+
+    if query := st.chat_input("Ask about market drivers..."):
+        # 1. Immediately show user message
+        with chat_box:
+            st.chat_message("user").write(query)
+        
+        # 2. Assistant response
+        with chat_box.chat_message("assistant"):
+            status_placeholder = st.empty()
+            with status_placeholder.status("Thinking...", expanded=True) as status:
+                agent = init_financial_agent()
+                # We can't easily stream "out" of the with block to the parent
+                # So we'll run the agent here and then stream outside
+                
+            # Stream the response outside the status box
+            def stream_content():
+                for chunk in agent.analyze_stream_agentic(
+                    asset_name, 
+                    query, 
+                    start_date, 
+                    end_date, 
+                    msgs.messages
+                ):
+                    if hasattr(chunk, "content") and chunk.content:
+                        # Once we start getting text, we can hide the thinking status
+                        status_placeholder.empty()
+                        yield str(chunk.content)
+            
+            response = st.write_stream(stream_content())
+            
+            full_ans = str(response) if response else ""
+            
+        msgs.add_user_message(query)
+        msgs.add_ai_message(full_ans)
 
 # --- Dependencies ---
 stock_api = init_stock_api()
 news_repo = init_news_repo()
 
 # === EAGER LOADING: Preload ALL resources at startup ===
-# Ensures instant response when user starts chatting
 if "resources_loaded" not in st.session_state:
-    with st.spinner("⚡ Initializing StockInsight... (~5-7 seconds)"):
-        # Load Agent (triggers VectorStore + embedding models)
+    with st.spinner("⚡ Initializing Analysis Engine..."):
         _ = init_financial_agent()
-        
-        # Preload common price data for faster first query
-        try:
-            _ = stock_api.get_price_data("silver_future")
-        except:
-            pass
-        
         st.session_state.resources_loaded = True
-    st.success("✅ Ready! Ask me anything.", icon="🚀")
 
 # --- Initial State & Date Handling ---
 # 1. Initialize Asset & Date Range from Query Params or Defaults
@@ -109,12 +150,13 @@ with st.sidebar:
     st.title("🛡️ Analysis Settings")
     
     # Asset Selection
-    csv_files = stock_api.get_all_files()
-    selected_file = st.selectbox("Select Asset", csv_files)
-    asset_name = selected_file.replace("_price.csv", "") if selected_file else "Unknown"
+    asset_map = stock_api.list_assets()
+    asset_ko_names = list(asset_map.keys())
+    selected_ko = st.selectbox("종목 선택", asset_ko_names)
+    asset_name = asset_map.get(selected_ko, "Unknown")
 
     # Data Load (for UI Chart)
-    df = stock_api.get_price_data(asset_name)
+    df = stock_api.get_prices(asset_name)
     
     if not df.empty:
         # Load dates from Query Params (Source of Truth)
@@ -126,8 +168,11 @@ with st.sidebar:
             st.session_state.end_date = pd.to_datetime(q_end).date()
         else:
             # First time load or clear case
-            st.session_state.start_date = df['time'].min().date()
-            st.session_state.end_date = df['time'].max().date()
+            # Ensure we get date objects regardless of whether time is datetime or date
+            min_time = df['time'].min()
+            max_time = df['time'].max()
+            st.session_state.start_date = min_time.date() if hasattr(min_time, 'date') else min_time
+            st.session_state.end_date = max_time.date() if hasattr(max_time, 'date') else max_time
             st.query_params["start_date"] = str(st.session_state.start_date)
             st.query_params["end_date"] = str(st.session_state.end_date)
 
@@ -159,25 +204,23 @@ with st.sidebar:
         
         # Reset Button
         if st.button("🔄 Reset Range"):
-             st.session_state.start_date = df['time'].min().date()
-             st.session_state.end_date = df['time'].max().date()
+             min_time = df['time'].min()
+             max_time = df['time'].max()
+             st.session_state.start_date = min_time.date() if hasattr(min_time, 'date') else min_time
+             st.session_state.end_date = max_time.date() if hasattr(max_time, 'date') else max_time
              st.query_params["start_date"] = str(st.session_state.start_date)
              st.query_params["end_date"] = str(st.session_state.end_date)
              st.rerun()
 
-    # Event Selection
-    st.divider()
-    st.subheader("📂 Event Files")
-    all_event_files = news_repo.get_all_files()
-    default_matches = [f for f in all_event_files if asset_name in f]
-    selected_event_files = st.multiselect("Choose Event Source", all_event_files, default=default_matches)
+    # Event/News filtering is now handled by the RDB many-to-many relationship
+    # No need for manual file selection
     
 
 # --- Main Page ---
 if df.empty:
     st.error("No data found for selected asset.")
 else:
-    st.subheader(f"Market Analysis: {asset_name.upper()}")
+    st.subheader(f"📊 Market Analysis: {selected_ko} ({asset_name})")
     
     col_chart, col_side = st.columns([2, 1])
     
@@ -234,17 +277,17 @@ else:
 
     # --- Side Panel (Timeline & Chat) ---
     with col_side:
-        # Load events (cached in NewsRepository.get_events)
-        display_events = news_repo.get_events(
-            st.session_state.start_date, 
-            st.session_state.end_date, 
-            target_files=selected_event_files
-        )
-        
         tab_ev, tab_chat = st.tabs(["📅 Timeline", "🤖 AI Analyst"])
         
         # Tab 1: Timeline
         with tab_ev:
+            # Load events (Lazy load inside tab)
+            display_events = news_repo.search_events(
+                st.session_state.start_date, 
+                st.session_state.end_date,
+                asset_symbol=asset_name
+            )
+            
             # Header with refresh button
             col1, col2 = st.columns([3, 1])
             with col1:
@@ -253,7 +296,7 @@ else:
             with col2:
                 if st.button("🔄 Refresh", key="refresh_events", use_container_width=True):
                     # Clear NewsRepository cache and force reload
-                    news_repo.get_events.clear()
+                    news_repo.search_events.clear()
                     st.rerun()
             
             # Scrollable Container for Events
@@ -286,55 +329,4 @@ else:
         
         # Tab 2: Chat
         with tab_chat:
-            msgs = StreamlitChatMessageHistory(key="chat_messages")
-            
-            # History Sync
-            if "last_asset_name" in st.session_state and st.session_state.last_asset_name != asset_name:
-                msgs.clear()
-                st.toast(f"Asset changed to {asset_name}. Chat history cleared.", icon="🧹")
-            st.session_state.last_asset_name = asset_name
-
-            # Chat UI
-            chat_box = st.container(height=800)
-            for msg in msgs.messages:
-                chat_box.chat_message(msg.type).write(msg.content)
-
-            if query := st.chat_input("Ask about market drivers..."):
-                # Type guard: query is guaranteed to be str (not None) inside this block
-                assert isinstance(query, str)
-                
-                with chat_box:
-                    st.chat_message("user").write(query)
-                
-                # Get cached agent (prevents model reloading)
-                agent = init_financial_agent()
-                
-                # Capture query for nested function (type checker)
-                user_query: str = query
-                
-                with chat_box.chat_message("assistant"):
-                    # Get date range from session state
-                    start_d = st.session_state.start_date
-                    end_d = st.session_state.end_date
-                    
-                    # Agentic stream generator
-                    def stream_content():
-                        for chunk in agent.analyze_stream_agentic(
-                            asset_name, 
-                            user_query,  # Use captured variable
-                            start_d, 
-                            end_d, 
-                            msgs.messages, 
-                            target_files=selected_event_files
-                        ):
-                            # Agent guarantees string content
-                            if hasattr(chunk, "content") and chunk.content:
-                                yield str(chunk.content)
-                    
-                    # Use st.write_stream for smooth streaming
-                    response = st.write_stream(stream_content())
-                    # Ensure full_ans is a string (write_stream returns str or list)
-                    full_ans = str(response) if response else ""
-                    
-                msgs.add_user_message(query)
-                msgs.add_ai_message(full_ans)
+            chat_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
