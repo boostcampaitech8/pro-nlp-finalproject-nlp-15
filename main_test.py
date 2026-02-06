@@ -10,6 +10,8 @@ from core.fact_book_utils import fact_book_to_arena_input
 from core.reasoning import ReasoningEngine
 from agents.arena import run_automated_arena
 from agents.analyst import AnalystAgent
+from omegaconf import DictConfig
+from core.reasoning import ReasoningEngine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,9 +75,8 @@ async def run_test_pipeline(cfg: DictConfig):
     print(f"✅ Phase 1 완료. 스키마/맥락 생성됨.\n")
 
     # --- Phase 2: Bull/Bear 적대적 아레나 ---
-    max_turns = 2
     print("[Phase 2] 에이전트 자율 적대적 토론 진행 중...")
-    debate_log = await run_automated_arena(schema, news_content, cfg, max_turns=max_turns)
+    debate_log = await run_automated_arena(fact_book, cfg)
 
     # --- Phase 3: 최종 판결 및 서사 통합 ---
     print("\n[Phase 3] 최종 판결 및 리포트 생성 중...")
@@ -97,8 +98,7 @@ async def run_test_pipeline(cfg: DictConfig):
     print(f"📋 [최종 분석 리포트 - {meta.get('commodity', '')} {meta.get('period', {})}]")
     print(final_report)
     print("🏁" * 30 + "\n")
-from omegaconf import DictConfig
-from core.reasoning import ReasoningEngine
+
 
     # 토론 로그 + 최종 리포트를 디스크에 저장 (터미널 출력과 동일한 내용)
     period = meta.get("period", {})
@@ -138,7 +138,7 @@ from core.reasoning import ReasoningEngine
         f.write("\n".join(lines))
     print(f"[저장] 토론·리포트: {report_path}\n")
 
-    # 백엔드 전달용 JSON (같은 base name으로 저장)
+    # 백엔드 전달용 JSON (3라운드 = Bull↔Bear 3회, 선공은 initial_bias)
     turn_start = debate_log[0]["role"] if debate_log else "bull"
     bull_contents = [m["content"] for m in debate_log if m.get("role") == "bull"]
     bear_contents = [m["content"] for m in debate_log if m.get("role") == "bear"]
@@ -150,7 +150,7 @@ from core.reasoning import ReasoningEngine
             "delta_days": period.get("delta_days"),
         },
         "events_cnt": len(fact_book.get("events", [])),
-        "turn": max_turns,
+        "turn": 3,
         "agent": {
             "turn_start": turn_start,
             "bull": bull_contents,

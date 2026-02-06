@@ -25,7 +25,10 @@ dependencies = [
     # --- Data Processing & Analysis ---
     "pandas>=2.1.0",
     "numpy>=1.24.0",
-    "jsonlines",           
+    "jsonlines",
+    "pymysql>=1.1.0",
+    "python-dateutil>=2.8.0",
+    "trafilatura>=2.0.0",           
 
     # --- Web Service (Optional) ---
     "fastapi>=0.110.0",

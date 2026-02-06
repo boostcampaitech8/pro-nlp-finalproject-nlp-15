@@ -6,6 +6,7 @@ import json
 import asyncio
 from omegaconf import DictConfig
 from .llm import send_llmapi
+from .fact_book_utils import schema_for_prompt
 from agents.analyst import AnalystAgent
 from agents.bull import BullAgent
 from agents.bear import BearAgent
@@ -76,7 +77,32 @@ class ReasoningEngine:
         return await send_llmapi(
             prompt=user_prompt,
             cfg=self.cfg,
-            role="master", 
-            task_type="verdict", # local.yaml의 verdict(0.3) 온도 사용
+            role="master",
+            task_type="verdict",
             system_prompt=self.system_prompt
+        )
+
+    async def perform_3step_reasoning(self, schema, debate_log: list) -> str:
+        """
+        main_test 등에서 사용: (schema, debate_log)만 받아 Verdict LLM 호출 후 판결문 반환.
+        """
+        debate_str = "\n".join([
+            f"{m.get('role', '').upper()}: {m.get('content', '')}"
+            for m in debate_log
+        ])
+        fact_summary = schema_for_prompt(schema)
+        period = schema.get("period", {}) if isinstance(schema, dict) else {}
+        end_date = period.get("end", "today") if isinstance(period, dict) else "today"
+
+        user_prompt = self.cfg.prompts.verdict.judge_user.format(
+            end_date=end_date,
+            fact_book=fact_summary,
+            debate_results=debate_str,
+        )
+        return await send_llmapi(
+            prompt=user_prompt,
+            cfg=self.cfg,
+            role="master",
+            task_type="verdict",
+            system_prompt=self.system_prompt,
         )

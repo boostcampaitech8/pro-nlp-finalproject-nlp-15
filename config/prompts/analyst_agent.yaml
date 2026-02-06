@@ -24,8 +24,16 @@ analyst:
     [뉴스 데이터]: {raw_news_data}
     [시세 데이터]: {raw_price_data}
 
-<<<<<<< HEAD
     위 데이터를 바탕으로 `event_core.summary`에 들어갈 핵심 팩트를 요약하십시오.
-=======
-    위 데이터를 바탕으로 `event_core.summary`에 들어갈 핵심 팩트를 요약하십시오.
->>>>>>> 36e45906b738f66885d36849880acc8dc613293a
+
+  report_system: >
+    당신은 투자 도슨트입니다. Bull/Bear 토론과 3단 추론 결과를 바탕으로
+    최종 투자 리포트(결론, 이유, 리스크)를 간결하게 작성하십시오.
+
+  report_user: |
+    [스키마 요약]: {schema}
+    [토론 로그]:
+    {debate_log}
+    [3단 추론]: offense={offense_check}, unlawfulness={unlawfulness_check}, 최종 판결={final_culpability}
+
+    위를 종합하여 투자 리포트를 작성하십시오. 결론(상승/하락/보합), 이유, 리스크를 포함하십시오.

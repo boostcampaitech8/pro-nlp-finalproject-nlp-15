@@ -8,6 +8,18 @@ class BearAgent:
         self.cfg = cfg
         self.system_prompt = cfg.prompts.bear.system
 
+    async def initial_warning(self, fact_book: str | dict) -> str:
+        """Bear 선공 시 팩트북만 보고 첫 경고 발언."""
+        fact_str = fact_book if isinstance(fact_book, str) else json.dumps(fact_book, ensure_ascii=False, indent=2)
+        user_prompt = self.cfg.prompts.bear.initial_user.format(fact_book=fact_str)
+        return await send_llmapi(
+            prompt=user_prompt,
+            cfg=self.cfg,
+            role="debater",
+            task_type="debate",
+            system_prompt=self.system_prompt,
+        )
+
     async def counter_argue(self, fact_book: str | dict, bull_argument: str) -> str:
         """
         상승 논리의 허점을 데이터로 반박합니다.

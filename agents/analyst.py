@@ -4,6 +4,7 @@ import trafilatura
 import json
 from core.db import DBManager
 from core.llm import send_llmapi
+from core.fact_book_utils import schema_for_prompt
 from omegaconf import DictConfig
 
 class AnalystAgent:
@@ -102,3 +103,36 @@ class AnalystAgent:
         fact_book['events'] = selected_events
         fact_book['analysis_metadata']['total_events_found'] = len(selected_events)
         return fact_book
+
+    async def summarize_verdict(
+        self,
+        schema,
+        debate_log: list,
+        reasoning_result: dict,
+    ) -> str:
+        """
+        main_test 등에서 사용: 토론 로그와 3단 추론 결과를 받아 최종 투자 리포트 문자열을 반환합니다.
+        """
+        debate_str = "\n".join([
+            f"[{m.get('role', '').upper()}]: {m.get('content', '')}"
+            for m in debate_log
+        ])
+        schema_str = schema_for_prompt(schema)
+        offense = reasoning_result.get("offense", "분석 불가")
+        unlawfulness = reasoning_result.get("unlawfulness", "분석 불가")
+        culpability = reasoning_result.get("culpability", "판단 보류")
+
+        user_prompt = self.cfg.prompts.analyst.report_user.format(
+            schema=schema_str,
+            debate_log=debate_str,
+            offense_check=offense,
+            unlawfulness_check=unlawfulness,
+            final_culpability=culpability,
+        )
+        return await send_llmapi(
+            prompt=user_prompt,
+            cfg=self.cfg,
+            role="master",
+            task_type="analysis",
+            system_prompt=self.cfg.prompts.analyst.report_system,
+        )
