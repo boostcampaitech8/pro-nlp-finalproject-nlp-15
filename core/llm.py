@@ -45,14 +45,17 @@ async def send_llmapi(
 
     base_url = target_cfg.base_url.rstrip("/")
     full_url = f"{base_url}/chat/completions"
+    # fact_book이 크면 프롬프트가 길어져 처리 시간이 오래 걸릴 수 있음
+    timeout_sec = getattr(target_cfg, "timeout", 120)
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(full_url, json=payload, headers=headers, timeout=30) as response:
+            async with session.post(full_url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as response:
                 if response.status != 200:
                     err_text = await response.text()
                     return f"Error: Status {response.status} - {err_text}"
                 result = await response.json()
                 return result["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return f"Server API Error: {str(e)} (Check base_url: {target_cfg.base_url})"
+        msg = str(e).strip() or getattr(e, "message", "") or type(e).__name__
+        return f"Server API Error: {msg} (Check base_url: {target_cfg.base_url})"
