@@ -4,7 +4,7 @@
 ### Phase 1: Fact Extraction  
 ### (마스터 스키마 추출)
 
-- **주체 모델**: EXAONE-3.0-70B  
+- **주체 모델**: EXAONE-3.0-32B  
   *(현재 개발 단계에서는 로컬 환경의 EXAONE-3.0-7.8B로 대체 운용)*
 
 - **Input**  
@@ -29,7 +29,7 @@
 ### Phase 2: Interactive Arena  
 ### (이해 중심의 적대적 토론)
 
-- **주체 모델**: EXAONE-3.0-7.8B  
+- **주체 모델**: EXAONE-3.0-32B  
   - Bull Agent (긍정적 해석)
   - Bear Agent (부정적 해석)
 
@@ -63,7 +63,7 @@
 ### Phase 3: Final Verdict  
 ### (논리적 최종 판결)
 
-- **주체 모델**: EXAONE-3.0-70B  
+- **주체 모델**: EXAONE-3.0-32B  
   *(현재는 로컬 7.8B 모델로 기능 검증 단계)*
 
 - **Input**

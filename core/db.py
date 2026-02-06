@@ -128,4 +128,8 @@ class DBManager:
             os.makedirs(dir_path, exist_ok=True)
 
         with open(output_path, "w", encoding="utf-8") as f:
+<<<<<<< HEAD
             json.dump(fact_book, f, ensure_ascii=False, indent=2, default=self._json_serial)
+=======
+            json.dump(fact_book, f, ensure_ascii=False, indent=2, default=self._json_serial)
+>>>>>>> 1153383bfed1e6f5b794f9c6b3a5471bf4fa64b4
