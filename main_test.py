@@ -97,6 +97,8 @@ async def run_test_pipeline(cfg: DictConfig):
     print(f"📋 [최종 분석 리포트 - {meta.get('commodity', '')} {meta.get('period', {})}]")
     print(final_report)
     print("🏁" * 30 + "\n")
+from omegaconf import DictConfig
+from core.reasoning import ReasoningEngine
 
     # 토론 로그 + 최종 리포트를 디스크에 저장 (터미널 출력과 동일한 내용)
     period = meta.get("period", {})
@@ -166,6 +168,25 @@ async def run_test_pipeline(cfg: DictConfig):
 def main(cfg: DictConfig):
     asyncio.run(run_test_pipeline(cfg))
 
+#     asyncio.run(run_pipeline(cfg))
+
+# async def run_pipeline(cfg: DictConfig):
+#     print("\n" + "="*50 + "\n📈 AI 금융 분석 파이프라인 가동 (v2.1)\n" + "="*50)
+    
+#     target = input("👉 종목(은/구리 등): ").strip()
+#     start = input("📅 시작일(YYYY-MM-DD): ").strip()
+#     end = input("📅 종료일(YYYY-MM-DD): ").strip()
+
+#     if not all([target, start, end]):
+#         print("❌ 입력을 확인해주세요."); return
+
+#     engine = ReasoningEngine(cfg)
+    
+#     print(f"\n🚀 {target} 시장 분석 및 토론을 시작합니다...")
+#     report = await engine.run_full_analysis(target, start, end)
+    
+#     print(f"\n⚖️ [최종 투자 리포트]\n{report}")
+#     print("\n" + "="*50 + "\n✅ 분석 완료\n" + "="*50)
 
 if __name__ == "__main__":
     main()
