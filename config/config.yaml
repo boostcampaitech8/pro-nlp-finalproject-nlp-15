@@ -3,12 +3,6 @@ defaults:
   - llm: local
   # RDB 설정: config/db/rdb.yaml 사용
   - db: rdb
-  - prompts/schema_ie@prompts
-  - prompts/bear_agent@prompts
-  - prompts/bull_agent@prompts
+  - prompts/arena@prompts
   - prompts/verdict@prompts        
   - prompts/analyst_agent@prompts  
-
-data:
-  # main_test.py JSONL 로드 경로 (data/events에 jsonl 있음, sample 없으면 events 사용)
-  raw_path: ${hydra:runtime.cwd}/data/events
