@@ -40,7 +40,12 @@ class VectorStore:
             print(f"❌ Qdrant connection failed: {e}")
             self.client = None
         
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            self.device = "mps"
+        else:
+            self.device = "cpu"
         
         # Load models using class-level cache
         # 1. Dense Model

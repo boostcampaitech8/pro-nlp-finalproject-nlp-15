@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os, sys
+import typing
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,12 +19,15 @@ from db.event_repo import EventRepository
 from db.database import get_engine
 
 # --- Hydra Init ---
-if "cfg" not in st.session_state:
-    if GlobalHydra.instance().is_initialized(): GlobalHydra.instance().clear()
+@st.cache_resource
+def load_config():
+    """Load configuration once and cache it."""
+    if GlobalHydra.instance().is_initialized():
+        GlobalHydra.instance().clear()
     with initialize(version_base=None, config_path="../config"):
-        st.session_state.cfg = compose(config_name="chatbot")
+        return compose(config_name="chatbot")
 
-cfg = st.session_state.cfg
+cfg = load_config()
 
 st.set_page_config(page_title="AI Financial Intelligence", layout="wide")
 
@@ -51,9 +55,15 @@ def init_financial_agent():
     """Cache FinancialAgent - CRITICAL for performance."""
     return FinancialAgent(cfg)
 
+# === EAGER LOADING: Preload ALL resources at startup ===
+if "resources_loaded" not in st.session_state:
+    with st.spinner("⚡ Initializing Analysis Engine (Loading Models)..."):
+        init_financial_agent()
+        st.session_state.resources_loaded = True
+
 # --- Chat Fragment (Isolates UI Reruns) ---
 @st.fragment
-def chat_interface(asset_name: str, start_date: Any, end_date: Any):
+def chat_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any):
     """
     Renders the chat interface in an isolated fragment.
     This prevents the main chart and timeline from re-rendering on every message.
@@ -77,42 +87,40 @@ def chat_interface(asset_name: str, start_date: Any, end_date: Any):
         
         # 2. Assistant response
         with chat_box.chat_message("assistant"):
+            agent = init_financial_agent()
             status_placeholder = st.empty()
-            with status_placeholder.status("Thinking...", expanded=True) as status:
-                agent = init_financial_agent()
-                # We can't easily stream "out" of the with block to the parent
-                # So we'll run the agent here and then stream outside
-                
-            # Stream the response outside the status box
+            
+            # Stream the response
             def stream_content():
+                has_content = False
                 for chunk in agent.analyze_stream_agentic(
                     asset_name, 
-                    query, 
+                    str(query), 
                     start_date, 
                     end_date, 
                     msgs.messages
                 ):
                     if hasattr(chunk, "content") and chunk.content:
-                        # Once we start getting text, we can hide the thinking status
-                        status_placeholder.empty()
+                        # Clear the "Analyzing" spinner as soon as we get the first chunk of text
+                        if not has_content:
+                            status_placeholder.empty()
+                            has_content = True
                         yield str(chunk.content)
             
-            response = st.write_stream(stream_content())
+            # Use st.spinner for a cleaner "Analyzing" look
+            with status_placeholder:
+                with st.spinner("Analyzing market data..."):
+                    response = st.write_stream(stream_content())
             
             full_ans = str(response) if response else ""
             
-        msgs.add_user_message(query)
-        msgs.add_ai_message(full_ans)
+        # History is now managed INTERNALLY by the agent 
+        # to ensure correct turn order for Gemini.
 
 # --- Dependencies ---
 stock_api = init_stock_api()
 news_repo = init_news_repo()
 
-# === EAGER LOADING: Preload ALL resources at startup ===
-if "resources_loaded" not in st.session_state:
-    with st.spinner("⚡ Initializing Analysis Engine..."):
-        _ = init_financial_agent()
-        st.session_state.resources_loaded = True
 
 # --- Initial State & Date Handling ---
 # 1. Initialize Asset & Date Range from Query Params or Defaults
@@ -167,12 +175,9 @@ with st.sidebar:
             st.session_state.start_date = pd.to_datetime(q_start).date()
             st.session_state.end_date = pd.to_datetime(q_end).date()
         else:
-            # First time load or clear case
-            # Ensure we get date objects regardless of whether time is datetime or date
-            min_time = df['time'].min()
-            max_time = df['time'].max()
-            st.session_state.start_date = min_time.date() if hasattr(min_time, 'date') else min_time
-            st.session_state.end_date = max_time.date() if hasattr(max_time, 'date') else max_time
+            # First time load or clear case - Range from Config (Defaulting to 2017-11 to 2026-01-31)
+            st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
+            st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
             st.query_params["start_date"] = str(st.session_state.start_date)
             st.query_params["end_date"] = str(st.session_state.end_date)
 
@@ -204,10 +209,8 @@ with st.sidebar:
         
         # Reset Button
         if st.button("🔄 Reset Range"):
-             min_time = df['time'].min()
-             max_time = df['time'].max()
-             st.session_state.start_date = min_time.date() if hasattr(min_time, 'date') else min_time
-             st.session_state.end_date = max_time.date() if hasattr(max_time, 'date') else max_time
+             st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
+             st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
              st.query_params["start_date"] = str(st.session_state.start_date)
              st.query_params["end_date"] = str(st.session_state.end_date)
              st.rerun()
@@ -225,55 +228,48 @@ else:
     col_chart, col_side = st.columns([2, 1])
     
     with col_chart:
-        # 1. Prepare Data: Filter to selected range (Crop)
-        visible_mask = (df['time'].dt.date >= st.session_state.start_date) & (df['time'].dt.date <= st.session_state.end_date)
-        visible_data = df.loc[visible_mask]
-        
-        # --- Metrics Display ---
-        if not visible_data.empty:
+        # --- Metrics & Chart Fragment (Isolates reruns from timeline/chat) ---
+        @st.fragment
+        def render_market_data():
+            # Filter data inside the fragment for better isolation
+            visible_mask = (df['time'].dt.date >= st.session_state.start_date) & (df['time'].dt.date <= st.session_state.end_date)
+            v_data = df.loc[visible_mask]
+            
+            if v_data.empty: 
+                st.warning("No data in selected range.")
+                return
+            
+            # --- Metrics Display ---
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-            start_p = visible_data.iloc[0]['close']
-            end_p = visible_data.iloc[-1]['close']
+            start_p = v_data.iloc[0]['close']
+            end_p = v_data.iloc[-1]['close']
             ret = ((end_p - start_p) / start_p) * 100
-            vol = visible_data['close'].pct_change().std() * (252**0.5) * 100
+            vol = v_data['close'].pct_change().std() * (252**0.5) * 100
             
             m_col1.metric("Period Return", f"{ret:.2f}%", f"{end_p - start_p:.2f}")
             m_col2.metric("Volatility (Ann.)", f"{vol:.2f}%")
             m_col3.metric("Start Date", f"{st.session_state.start_date}")
             m_col4.metric("End Date", f"{st.session_state.end_date}")
 
-        # 2. Chart Rendering (Cropped View)
-        # Use visible_data directly. 
-        # X-axis will auto-range to this data.
-        if not visible_data.empty:
-            fig = go.Figure(go.Scatter(x=visible_data['time'], y=visible_data['close'], mode='lines', line=dict(color='#007AFF')))
+            # 2. Chart Rendering (Cropped View)
+            fig = go.Figure(go.Scatter(x=v_data['time'], y=v_data['close'], mode='lines', line=dict(color='#007AFF')))
             
-            # Dynamic Y-axis scaling
-            y_min = visible_data['close'].min()
-            y_max = visible_data['close'].max()
+            y_min, y_max = v_data['close'].min(), v_data['close'].max()
             padding = (y_max - y_min) * 0.05 if y_max != y_min else y_max * 0.01
-            y_range = [y_min - padding, y_max + padding]
-
+            
             fig.update_layout(
-                height=600, 
+                height=550, # Slightly smaller for better fit
                 template="plotly_dark",
-                dragmode="select", # Enable box selection
-                xaxis=dict(
-                    rangeslider=dict(visible=False) 
-                    # Removed hardcoded range to allow auto-fit to cropped data
-                ),
-                yaxis=dict(
-                    autorange=False,
-                    range=y_range
-                )
+                dragmode="select",
+                margin=dict(l=10, r=10, t=10, b=10),
+                xaxis=dict(rangeslider=dict(visible=False), showgrid=False),
+                yaxis=dict(autorange=False, range=[y_min - padding, y_max + padding], showgrid=True, gridcolor="#333"),
+                hovermode="x unified"
             )
             
-            chart_result = st.plotly_chart(
-                fig, 
-                on_select="rerun", 
-                selection_mode="box",
-                key="main_chart"
-            )
+            st.plotly_chart(fig, on_select="rerun", selection_mode="box", key="main_chart", use_container_width=True)
+
+        render_market_data()
 
     # --- Side Panel (Timeline & Chat) ---
     with col_side:

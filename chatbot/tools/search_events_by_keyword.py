@@ -59,28 +59,36 @@ def search_events_by_keyword(
         end = payload.get('end_date', start)
         
         output.append(f"\n### {i}. {title}")
-        output.append(f"- **Period**: {start} ~ {end}")
         output.append(f"- **Summary**: {description}")
         
-        # Include full content of the primary related article if available
+        # Related Articles and Primary Body
         article_ids = payload.get('article_ids', [])
+        related_links = []
+        primary_body = ""
+        
         if _article_repo and article_ids:
-            # We fetch the first (usually primary) article
-            primary_article_id = article_ids[0]
-            article_data = _article_repo.get_article(primary_article_id)
-            
-            if article_data:
-                content = article_data.get('content', '') # ArticleRepository returns 'content' for 'description' column
-                if content:
-                    # Provide full content or a significant chunk if it's exceptionally long
-                    # For RAG, providing full content of the most relevant article is ideal
-                    limit = 3000
-                    display_content = content[:limit] + ("..." if len(content) > limit else "")
-                    output.append(f"- **Primary Article Body**:\n{display_content}")
-            else:
-                output.append(f"- **Related Articles**: {len(article_ids)} items (details available via ID)")
-        elif article_ids:
-            output.append(f"- **Related Articles**: {len(article_ids)} items")
+            for idx, aid in enumerate(article_ids):
+                art_data = _article_repo.get_article(aid)
+                if art_data:
+                    title_art = art_data.get('title', 'Link')
+                    url_art = art_data.get('url', '#')
+                    related_links.append(f"[{title_art}]({url_art})")
+                    
+                    if idx == 0: # First article as primary body
+                        body = art_data.get('content', '') or art_data.get('description', '')
+                        if body:
+                            limit = 3000
+                            primary_body = body[:limit] + ("..." if len(body) > limit else "")
+
+        if related_links:
+            output.append("- **Related Articles**:")
+            for link in related_links[:5]: # Limit to top 5
+                output.append(f"  - {link}")
+        
+        if len(primary_body) > 0:
+            output.append(f"- **Description**: {primary_body}")
+        elif article_ids and not _article_repo:
+            output.append(f"- **Related Articles**: {len(article_ids)} items (Article Repository required for details)")
     
     return "\n".join(output)
 

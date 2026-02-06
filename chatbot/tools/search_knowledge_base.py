@@ -45,7 +45,7 @@ def search_knowledge_base(
     if results is None or not results:
         return f"No relevant financial documents found for query: '{query}'"
     
-    output = [f"## Financial Research on: '{query}'"]
+    output = [f"## Knowledge Base on: '{query}'"]
     for i, hit in enumerate(results, 1):
         score = hit.score
         payload = hit.payload or {}
@@ -55,9 +55,9 @@ def search_knowledge_base(
         text = payload.get('chunk_text', payload.get('description', 'No content'))
         pub_date = payload.get('publication_date', 'Unknown date') # Fixed from publish_date
         
-        output.append(f"\n### {i}. {title} (Relevance: {score:.2f})")
+        output.append(f"\n### {i}. {title}")
         output.append(f"- **Published**: {pub_date}")
-        output.append(f"- **Body**: {text or 'No content'}") # Changed label to Body
+        output.append(f"- **Body**: {text or 'No content'}")
     
     return "\n".join(output)
 

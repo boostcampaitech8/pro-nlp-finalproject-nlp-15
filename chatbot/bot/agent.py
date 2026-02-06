@@ -1,6 +1,6 @@
 from typing import Any
 from datetime import datetime
-from typing import Any
+from sqlalchemy.orm import Session
 from langfuse.langchain import CallbackHandler
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, AIMessageChunk
 
@@ -10,7 +10,7 @@ from db.price_repo import PriceRepository
 from db.event_repo import EventRepository
 from db.article_repo import ArticleRepository
 from vector_db.vector_store import VectorStore
-from db.database import get_engine
+from db.database import get_engine, Asset
 
 # 도구 함수 임포트 (LangChain @tool 데코레이터 사용)
 from chatbot.tools.get_period_overview import get_period_overview, set_dependencies as set_overview_deps
@@ -61,6 +61,29 @@ class FinancialAgent:
         set_event_deps(self.vector_store, self.article_repo, collection_name=self.event_collection)
         set_vector_store_docs(self.vector_store, collection_name=self.kb_collection)
 
+    def _sanitize_messages(self, messages: list[Any]) -> list[Any]:
+        """
+        Ensures strict turn order for Gemini: [Human, AI, Tool, AI, ...]
+        Also merges consecutive Human messages and ensures System is only at the top.
+        """
+        sanitized = []
+        for msg in messages:
+            if isinstance(msg, SystemMessage):
+                if not sanitized: sanitized.append(msg)
+                continue
+            
+            # Stringify content to avoid JSON rendering issues
+            if not isinstance(msg.content, str):
+                msg.content = str(msg.content)
+                
+            if sanitized and isinstance(msg, HumanMessage) and isinstance(sanitized[-1], HumanMessage):
+                # Merge consecutive Human messages
+                sanitized[-1].content += "\n\n" + msg.content
+            else:
+                sanitized.append(msg)
+        
+        return sanitized
+
     def analyze_stream_agentic(
         self, 
         asset_name: str, 
@@ -72,36 +95,34 @@ class FinancialAgent:
         """
         🤖 Agentic 모드: LLM이 사용자 질문에 따라 필요한 도구만 선택하여 호출
         """
-        # === 1. 도구 의존성 설정 ===
-        # (get_period_overview uses news_repo and stock_api already set in __init__)
-        
-        # === 2. 시스템 프롬프트 준비 ===
-        # Langfuse에서 금융 분석가 페르소나 프롬프트 가져오기
+        # === 1. 시스템 프롬프트 준비 ===
         persona_prompt = self.prompt_manager.get_system_prompt()
         persona_text = persona_prompt.compile() if hasattr(persona_prompt, "compile") else str(persona_prompt)
         
-        # === 3. 컨텍스트 정보 준비 (User Message에 포함될 prefix) ===
-        # 실제 asset의 가격 데이터에서 범위 계산
-        df = self.price_repo.get_prices(asset_name)
-        if not df.empty:
-            actual_data_start = df['time'].min().strftime("%Y-%m-%d")
-            actual_data_end = df['time'].max().strftime("%Y-%m-%d")
-        else:
-            # Fallback to config
-            actual_data_start = self.cfg.system.data_range.start
-            actual_data_end = self.cfg.system.data_range.end
+        # Data range from Config
+        actual_data_start = self.cfg.system.data_range.start
+        actual_data_end = self.cfg.system.data_range.end
+        
+        # Fetch asset full info for better grounding
+        asset_info = "Unknown"
+        with Session(self.engine) as session:
+            asset_obj = session.query(Asset).filter(Asset.code == asset_name.upper()).first()
+            if asset_obj:
+                asset_info = f"{asset_obj.code} ({asset_obj.name_en or asset_obj.name_ko})"
         
         # Get today's date
         today = datetime.now().strftime("%Y-%m-%d")
         
-        # Construct context prefix with English labels
+        # Construct context prefix
         context_prefix = (
             f"[Current date: {today}]\n"
-            f"[Available data range: {asset_name.upper()}, {actual_data_start} ~ {actual_data_end}]\n"
-            f"[User viewing range: {asset_name.upper()}, {start_date} ~ {end_date}]\n\n"
+            f"[Target Asset: {asset_info}]\n"
+            f"[Ticker Symbol: {asset_name.upper()}]\n"
+            f"[Available data range: {actual_data_start} ~ {actual_data_end}]\n"
+            f"[User viewing range: {start_date} ~ {end_date}]\n\n"
         )
         
-        # === 4. 도구 바인딩 (Consolidated 3-tool set) ===
+        # === 2. 도구 바인딩 ===
         tools = [
             get_period_overview,
             search_events_by_keyword,
@@ -110,55 +131,46 @@ class FinancialAgent:
         ]
         llm_with_tools = self.client.bind_tools(tools)
         
-        # === 5. 메시지 구성 ===
-        # System: 페르소나와 규칙만
-        # User: [컨텍스트] + 실제 질문
-        messages: list[SystemMessage | HumanMessage | AIMessage | ToolMessage] = list([
-            SystemMessage(content=persona_text)
-        ] + chat_history + [
-            HumanMessage(content=context_prefix + user_query)
-        ])
+        # === 3. 메시지 초기 구성 ===
+        # Gemini is strict: Human -> AI -> Tool -> Human
+        # chat_history usually contains [Human, AI, Human, AI...]
+        messages: list[Any] = [SystemMessage(content=persona_text)]
+        messages.extend(chat_history)
         
-        # === 5. Langfuse Tags 자동 생성 ===
-        tags = [
-            asset_name,
-            f"{start_date}~{end_date}"
-        ]
+        # Add current request
+        messages.append(HumanMessage(content=context_prefix + user_query))
         
-        # === 6. Tool Calling 루프 ===
+        tags = [asset_name, f"{start_date}~{end_date}"]
         trace_handler = CallbackHandler()
         iteration_count = 0
         max_iterations = 10
+        intermediate_steps: list[Any] = []
         
         while iteration_count < max_iterations:
             iteration_count += 1
             full_response = None
             
-            # config에 metadata={"langfuse_tags": tags} 추가하여 태그 전파
-            # Remove blocking synchronous callback (trace_handler) for smooth streaming
+            # Sanitize before sending to API
+            api_messages = self._sanitize_messages(messages)
+            
             for chunk in llm_with_tools.stream(
-                messages, 
-                config={"metadata": {"langfuse_tags": tags}}
+                api_messages, 
+                config={
+                    "callbacks": [trace_handler],
+                    "metadata": {"langfuse_tags": tags}
+                }
             ):
                 if hasattr(chunk, "content") and chunk.content:
-                    # Handle different content types
-                    content = chunk.content
-                    if isinstance(content, str):
-                        content_text = content
-                    elif isinstance(content, list):
-                        # Extract text from list of content blocks
-                        content_text = ''.join([
-                            item.get('text', '') if isinstance(item, dict) else str(item)
-                            for item in content
-                        ])
-                    elif isinstance(content, dict):
-                        # Extract text field from dict
-                        content_text = content.get('text', '')
-                    else:
-                        content_text = str(content)
+                    # Clean the content for streaming
+                    c = chunk.content
+                    text = ""
+                    if isinstance(c, str): text = c
+                    elif isinstance(c, list):
+                        text = "".join(i.get("text", "") if isinstance(i, dict) else str(i) for i in c)
+                    elif isinstance(c, dict): text = c.get("text", "")
                     
-                    if content_text:
-                        yield AIMessageChunk(content=content_text)
+                    if text:
+                        yield AIMessageChunk(content=text)
                 
                 if not full_response:
                     full_response = chunk
@@ -166,8 +178,17 @@ class FinancialAgent:
                     full_response = full_response + chunk
             
             if full_response and hasattr(full_response, 'tool_calls') and full_response.tool_calls:
-                messages.append(AIMessage(content=full_response.content or "", tool_calls=full_response.tool_calls))
-                # Map tool names to their functions
+                # Ensure AI message content is a string for history
+                content_str = ""
+                if full_response.content:
+                    if isinstance(full_response.content, str): content_str = full_response.content
+                    elif isinstance(full_response.content, list):
+                        content_str = "".join(i.get("text", "") if isinstance(i, dict) else str(i) for i in full_response.content)
+                
+                ai_tool_msg = AIMessage(content=content_str, tool_calls=full_response.tool_calls)
+                messages.append(ai_tool_msg)
+                intermediate_steps.append(ai_tool_msg)
+                
                 tool_map = {
                     'get_period_overview': get_period_overview,
                     'search_events_by_keyword': search_events_by_keyword,
@@ -177,37 +198,35 @@ class FinancialAgent:
                 
                 for tool_call in full_response.tool_calls:
                     tool_name = tool_call['name']
-                    tool_args = tool_call['args']
-                    
                     if tool_name in tool_map:
                         try:
-                            tool_result = tool_map[tool_name].run(tool_args)
-                            messages.append(ToolMessage(content=str(tool_result), tool_call_id=tool_call['id']))
+                            res = tool_map[tool_name].run(tool_call['args'], callbacks=[trace_handler])
+                            res_msg = ToolMessage(content=str(res), tool_call_id=tool_call['id'])
                         except Exception as e:
-                            messages.append(ToolMessage(content=f"Error: {str(e)}", tool_call_id=tool_call['id']))
+                            res_msg = ToolMessage(content=f"Error: {str(e)}", tool_call_id=tool_call['id'])
                     else:
-                        messages.append(ToolMessage(content=f"Tool {tool_name} not available", tool_call_id=tool_call['id']))
+                        res_msg = ToolMessage(content=f"Tool {tool_name} not available", tool_call_id=tool_call['id'])
+                    
+                    messages.append(res_msg)
+                    intermediate_steps.append(res_msg)
                 continue
             else:
                 break
 
-        # === 7. History Persistence ===
-        # Update the external chat_history with intermediate acts (Tools)
-        # We assume chatbot_app.py adds the User(query) and Final AI(response).
-        # We need to save the "Thought Process" (Tool Calls & Outputs) in between.
-        
-        # messages layout: [System, History..., User(Context), AI(Tool), Tool, ..., AI(Final)]
-        new_msgs_start_idx = 1 + len(chat_history)
-        
-        if new_msgs_start_idx < len(messages):
-            # new_interactions = [User(Context), AI(Tool), Tool, ..., AI(Final)]
-            new_interactions = messages[new_msgs_start_idx:]
+        # === 4. History Persistence ===
+        # Streamlit history is typically msgs.add_user_message and msgs.add_ai_message
+        # We handle intermediate steps here by extending the list if possible.
+        if isinstance(chat_history, list):
+            # Convert internal human msg back to clean version (no context_prefix)
+            chat_history.append(HumanMessage(content=user_query))
+            chat_history.extend(intermediate_steps)
             
-            # We want to keep ONLY the intermediate steps: [AI(Tool), Tool, ...]
-            # Exclude first (User) and last (Final AI)
-            if len(new_interactions) > 2:
-                intermediate_steps = new_interactions[1:-1]
-                
-                # Append to mutable chat_history list
-                if isinstance(chat_history, list):
-                    chat_history.extend(intermediate_steps)
+            if full_response:
+                # Ensure final AI content is stringified
+                f_content = full_response.content or ""
+                if not isinstance(f_content, str):
+                    if isinstance(f_content, list):
+                        f_content = "".join(i.get("text", "") if isinstance(i, dict) else str(i) for i in f_content)
+                    else:
+                        f_content = str(f_content)
+                chat_history.append(AIMessage(content=f_content))
