@@ -29,6 +29,7 @@ dependencies = [
     "sqlalchemy>=2.0.46",
     "streamlit>=1.53.1",
     "tqdm>=4.67.1",
+    "tavily-python>=0.7.21",
 ]
 
 [tool.pyrefly]

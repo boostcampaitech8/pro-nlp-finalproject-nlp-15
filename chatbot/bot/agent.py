@@ -16,7 +16,9 @@ from db.database import get_engine
 from chatbot.tools.get_period_overview import get_period_overview, set_dependencies as set_overview_deps
 from chatbot.tools.search_events_by_keyword import search_events_by_keyword, set_dependencies as set_event_deps
 from chatbot.tools.search_knowledge_base import search_knowledge_base, set_vector_store as set_vector_store_docs
-from chatbot.tools.web_browser import extract_url_content
+from chatbot.tools.web_browser import extract_url_content, web_search
+from chatbot.tools.vector_search import search_similar_articles, search_similar_events, set_vector_store as set_vector_store_vs
+from chatbot.tools.get_original_article import get_original_article
 
 from omegaconf import DictConfig
 
@@ -60,6 +62,7 @@ class FinancialAgent:
         set_overview_deps(self.event_repo, self.price_repo)
         set_event_deps(self.vector_store, self.article_repo, collection_name=self.event_collection)
         set_vector_store_docs(self.vector_store, collection_name=self.kb_collection)
+        set_vector_store_vs(self.vector_store)
 
     def analyze_stream_agentic(
         self, 
@@ -106,7 +109,11 @@ class FinancialAgent:
             get_period_overview,
             search_events_by_keyword,
             search_knowledge_base,
-            extract_url_content
+            extract_url_content,
+            search_similar_articles,
+            search_similar_events,
+            get_original_article,
+            web_search
         ]
         llm_with_tools = self.client.bind_tools(tools)
         
@@ -172,7 +179,11 @@ class FinancialAgent:
                     'get_period_overview': get_period_overview,
                     'search_events_by_keyword': search_events_by_keyword,
                     'search_knowledge_base': search_knowledge_base,
-                    'extract_url_content': extract_url_content
+                    'extract_url_content': extract_url_content,
+                    'search_similar_articles': search_similar_articles,
+                    'search_similar_events': search_similar_events,
+                    'get_original_article': get_original_article,
+                    'web_search': web_search
                 }
                 
                 for tool_call in full_response.tool_calls:
