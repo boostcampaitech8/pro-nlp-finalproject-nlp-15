@@ -24,4 +24,8 @@ analyst:
     [뉴스 데이터]: {raw_news_data}
     [시세 데이터]: {raw_price_data}
 
+<<<<<<< HEAD
     위 데이터를 바탕으로 `event_core.summary`에 들어갈 핵심 팩트를 요약하십시오.
+=======
+    위 데이터를 바탕으로 `event_core.summary`에 들어갈 핵심 팩트를 요약하십시오.
+>>>>>>> 36e45906b738f66885d36849880acc8dc613293a
