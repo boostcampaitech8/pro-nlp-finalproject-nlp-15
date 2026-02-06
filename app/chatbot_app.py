@@ -130,28 +130,31 @@ if "init_done" not in st.session_state:
     st.session_state.init_done = True
 
 # 2. Support Chart Selection (Box/Drag) at the very top
-if "main_chart" in st.session_state and st.session_state.main_chart:
-    selected = st.session_state.main_chart
-    if "selection" in selected and "box" in selected["selection"]:
-        box = selected["selection"]["box"]
-        if box and "x" in box[0]:
-            x_range = box[0]["x"]
-            try:
-                new_start = pd.to_datetime(x_range[0]).date()
-                new_end = pd.to_datetime(x_range[1]).date()
-                
-                # Check if selection is actually new to avoid infinite rerun
-                curr_start = st.query_params.get("start_date")
-                curr_end = st.query_params.get("end_date")
-                
-                if str(new_start) != curr_start or str(new_end) != curr_end:
-                    st.query_params["start_date"] = str(new_start)
-                    st.query_params["end_date"] = str(new_end)
-                    st.session_state.start_date = new_start
-                    st.session_state.end_date = new_end
-                    st.toast(f"🏆 Range Selected: {new_start} ~ {new_end}")
-                    st.rerun()
-            except Exception: pass
+def handle_chart_selection():
+    if "main_chart" in st.session_state and st.session_state.main_chart:
+        selected = st.session_state.main_chart
+        if "selection" in selected and "box" in selected["selection"]:
+            box = selected["selection"]["box"]
+            if box and "x" in box[0]:
+                x_range = box[0]["x"]
+                try:
+                    new_start = pd.to_datetime(x_range[0]).date()
+                    new_end = pd.to_datetime(x_range[1]).date()
+                    
+                    # Check if selection is actually new to avoid infinite rerun
+                    curr_start = st.query_params.get("start_date")
+                    curr_end = st.query_params.get("end_date")
+                    
+                    if str(new_start) != curr_start or str(new_end) != curr_end:
+                        st.query_params["start_date"] = str(new_start)
+                        st.query_params["end_date"] = str(new_end)
+                        st.session_state.start_date = new_start
+                        st.session_state.end_date = new_end
+                        st.toast(f"🏆 Period Selected: {new_start} ~ {new_end}")
+                        st.rerun()
+                except Exception: pass
+
+handle_chart_selection()
 
 # --- Sidebar ---
 with st.sidebar:
@@ -228,17 +231,13 @@ else:
     col_chart, col_side = st.columns([2, 1])
     
     with col_chart:
-        # --- Metrics & Chart Fragment (Isolates reruns from timeline/chat) ---
-        @st.fragment
-        def render_market_data():
-            # Filter data inside the fragment for better isolation
-            visible_mask = (df['time'].dt.date >= st.session_state.start_date) & (df['time'].dt.date <= st.session_state.end_date)
-            v_data = df.loc[visible_mask]
-            
-            if v_data.empty: 
-                st.warning("No data in selected range.")
-                return
-            
+        # Filter data based on global state
+        visible_mask = (df['time'].dt.date >= st.session_state.start_date) & (df['time'].dt.date <= st.session_state.end_date)
+        v_data = df.loc[visible_mask]
+        
+        if v_data.empty: 
+            st.warning("No data in selected range.")
+        else:
             # --- Metrics Display ---
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
             start_p = v_data.iloc[0]['close']
@@ -251,25 +250,26 @@ else:
             m_col3.metric("Start Date", f"{st.session_state.start_date}")
             m_col4.metric("End Date", f"{st.session_state.end_date}")
 
-            # 2. Chart Rendering (Cropped View)
-            fig = go.Figure(go.Scatter(x=v_data['time'], y=v_data['close'], mode='lines', line=dict(color='#007AFF')))
-            
-            y_min, y_max = v_data['close'].min(), v_data['close'].max()
-            padding = (y_max - y_min) * 0.05 if y_max != y_min else y_max * 0.01
+            # --- Chart (NOT nested in fragment to allow global date sync) ---
+            fig = go.Figure(go.Scatter(x=v_data['time'], y=v_data['close'], mode='lines', line=dict(color='#007AFF', width=2)))
             
             fig.update_layout(
-                height=550, # Slightly smaller for better fit
+                height=550,
                 template="plotly_dark",
-                dragmode="select",
+                dragmode="select",  # Reverted to select to support 'Drag to Zoom' behavior
                 margin=dict(l=10, r=10, t=10, b=10),
                 xaxis=dict(rangeslider=dict(visible=False), showgrid=False),
-                yaxis=dict(autorange=False, range=[y_min - padding, y_max + padding], showgrid=True, gridcolor="#333"),
+                yaxis=dict(autorange=True, showgrid=True, gridcolor="#333"),
                 hovermode="x unified"
             )
             
-            st.plotly_chart(fig, on_select="rerun", selection_mode="box", key="main_chart", use_container_width=True)
-
-        render_market_data()
+            st.plotly_chart(
+                fig, 
+                on_select="rerun", 
+                selection_mode="box", 
+                key="main_chart", 
+                width="stretch"
+            )
 
     # --- Side Panel (Timeline & Chat) ---
     with col_side:
@@ -277,50 +277,53 @@ else:
         
         # Tab 1: Timeline
         with tab_ev:
-            # Load events (Lazy load inside tab)
-            display_events = news_repo.search_events(
-                st.session_state.start_date, 
-                st.session_state.end_date,
-                asset_symbol=asset_name
-            )
+            @st.fragment
+            def render_timeline(asset_name, start_date, end_date):
+                # Load events (Lazy load inside fragment)
+                display_events = news_repo.search_events(
+                    start_date, 
+                    end_date,
+                    asset_symbol=asset_name
+                )
+                
+                # Header with refresh button
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.caption(f"📊 Found {len(display_events)} events")
+                    st.caption(f"📅 {start_date} ~ {end_date}")
+                with col2:
+                    if st.button("🔄 Refresh", key="refresh_events", width="stretch"):
+                        news_repo.search_events.clear()
+                        st.rerun()
+                
+                # Scrollable Container for Events
+                with st.container(height=700):
+                    for ev in display_events:
+                        with st.container(border=True):
+                            d = ev.get('start_date') or ev.get('date', 'Unknown')
+                            t = ev.get('title', 'No Title')
+                            desc = ev.get('description', '')
+                            
+                            # Header: Date & Title
+                            st.markdown(f"**{d}** | **{t}**")
+                            
+                            # Body: Description
+                            if desc:
+                                st.markdown(f"{desc}")
+                            
+                            # Articles: Show linked article titles
+                            articles = ev.get('articles', [])
+                            if articles:
+                                st.caption(f"📰 Related Articles ({len(articles)}):")
+                                for art in articles[:3]:  # Limit to 3 for UI cleanliness
+                                    art_title = art.get('title', 'Untitled')
+                                    art_url = art.get('url', '')
+                                    if art_url:
+                                        st.markdown(f"- [{art_title}]({art_url})")
+                                    else:
+                                        st.markdown(f"- {art_title}")
             
-            # Header with refresh button
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.caption(f"📊 Found {len(display_events)} events")
-                st.caption(f"📅 {st.session_state.start_date} ~ {st.session_state.end_date}")
-            with col2:
-                if st.button("🔄 Refresh", key="refresh_events", use_container_width=True):
-                    # Clear NewsRepository cache and force reload
-                    news_repo.search_events.clear()
-                    st.rerun()
-            
-            # Scrollable Container for Events
-            with st.container(height=700):
-                for ev in display_events:
-                    with st.container(border=True):
-                        d = ev.get('start_date') or ev.get('date', 'Unknown')
-                        t = ev.get('title', 'No Title')
-                        desc = ev.get('description', '')
-                        
-                        # Header: Date & Title
-                        st.markdown(f"**{d}** | **{t}**")
-                        
-                        # Body: Description
-                        if desc:
-                            st.markdown(f"{desc}")
-                        
-                        # Articles: Show linked article titles
-                        articles = ev.get('articles', [])
-                        if articles:
-                            st.caption(f"📰 Related Articles ({len(articles)}):")
-                            for art in articles[:3]:  # Limit to 3 for UI cleanliness
-                                art_title = art.get('title', 'Untitled')
-                                art_url = art.get('url', '')
-                                if art_url:
-                                    st.markdown(f"- [{art_title}]({art_url})")
-                                else:
-                                    st.markdown(f"- {art_title}")
+            render_timeline(asset_name, st.session_state.start_date, st.session_state.end_date)
 
         
         # Tab 2: Chat
