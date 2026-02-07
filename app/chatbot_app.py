@@ -17,6 +17,7 @@ from chatbot.bot.agent import FinancialAgent
 from db.price_repo import PriceRepository
 from db.event_repo import EventRepository
 from db.database import get_engine
+from chatbot.multi_agent.arena import Arena
 
 # --- Hydra Init ---
 @st.cache_resource
@@ -54,6 +55,12 @@ def init_news_repo():
 def init_financial_agent():
     """Cache FinancialAgent - CRITICAL for performance."""
     return FinancialAgent(cfg)
+
+@st.cache_resource
+def init_multi_agent_arena():
+    """Cache Multi-Agent Arena."""
+    llm_client = init_financial_agent().client
+    return Arena(cfg, llm_client)
 
 # === EAGER LOADING: Preload ALL resources at startup ===
 if "resources_loaded" not in st.session_state:
@@ -116,6 +123,85 @@ def chat_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any
             
         # History is now managed INTERNALLY by the agent 
         # to ensure correct turn order for Gemini.
+
+@st.fragment
+def multi_agent_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any):
+    """
+    Renders the Multi-Agent Debate interface.
+    """
+    arena = init_multi_agent_arena()
+    
+    col_btn, col_opt = st.columns([0.7, 0.3])
+    with col_opt:
+        rounds = st.slider("Debate Rounds", min_value=1, max_value=5, value=1)
+    
+    if col_btn.button("🚀 Start Multi-Agent Debate", type="primary", use_container_width=True):
+        st.session_state.debate_running = True
+        st.session_state.debate_messages = []
+        st.session_state.debate_rounds = rounds
+        
+    if "debate_running" in st.session_state and st.session_state.debate_running:
+        status_box = st.empty()
+        log_box = st.container(height=650)
+        
+        # Prepare data for debate
+        with st.spinner("Preparing facts..."):
+            event_data = news_repo.search_events(start_date, end_date, asset_symbol=asset_name)
+            price_summary = stock_api.get_summary(asset_name, start_date, end_date)
+        
+        async def run_it():
+            async for update in arena.run_debate_stream(
+                asset_name, 
+                str(end_date), 
+                event_data, 
+                price_summary,
+                rounds=st.session_state.get("debate_rounds", 1)
+            ):
+                status = update.get("status")
+                
+                if status == "analyzing":
+                    status_box.info(update.get("message"))
+                elif status == "fact_book":
+                    status_box.success("✅ Fact Book Ready!")
+                    with log_box.expander("📚 View Fact Book"):
+                        st.json(update.get("content"))
+                elif status in ["bear_warning", "bull_argue", "judging"]:
+                    status_box.info(update.get("message"))
+                elif status == "bear_stream":
+                    if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "bear":
+                        st.session_state.debate_messages.append({"role": "bear", "content": ""})
+                        # Bear on the Left
+                        col_bear, col_empty = log_box.columns([0.85, 0.15])
+                        with col_bear.chat_message("Bear Agent", avatar="app/static/bear_icon.png"):
+                            st.session_state.bear_placeholder = st.empty()
+                    
+                    st.session_state.debate_messages[-1]["content"] += update.get("chunk")
+                    st.session_state.bear_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+
+                elif status == "bull_stream":
+                    if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "bull":
+                        st.session_state.debate_messages.append({"role": "bull", "content": ""})
+                        # Bull on the Right
+                        col_empty, col_bull = log_box.columns([0.15, 0.85])
+                        with col_bull.chat_message("Bull Agent", avatar="app/static/bull_icon.png"):
+                            st.session_state.bull_placeholder = st.empty()
+                    
+                    st.session_state.debate_messages[-1]["content"] += update.get("chunk")
+                    st.session_state.bull_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+
+                elif status == "verdict_stream":
+                    if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "verdict":
+                        st.session_state.debate_messages.append({"role": "verdict", "content": ""})
+                        with log_box.chat_message("Market Verdict", avatar="app/static/verdict_icon.png"):
+                            st.subheader("⚖️ Final Verdict")
+                            st.session_state.verdict_placeholder = st.empty()
+                    
+                    st.session_state.debate_messages[-1]["content"] += update.get("chunk")
+                    st.session_state.verdict_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+
+        import asyncio
+        asyncio.run(run_it())
+        st.session_state.debate_running = False
 
 # --- Dependencies ---
 stock_api = init_stock_api()
@@ -273,7 +359,7 @@ else:
 
     # --- Side Panel (Timeline & Chat) ---
     with col_side:
-        tab_ev, tab_chat = st.tabs(["📅 Timeline", "🤖 AI Analyst"])
+        tab_ev, tab_chat, tab_multi = st.tabs(["📅 Timeline", "🤖 AI Analyst", "⚔️ Multi-Agent"])
         
         # Tab 1: Timeline
         with tab_ev:
@@ -333,3 +419,7 @@ else:
         # Tab 2: Chat
         with tab_chat:
             chat_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
+            
+        # Tab 3: Multi-Agent
+        with tab_multi:
+            multi_agent_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
