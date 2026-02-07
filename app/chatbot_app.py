@@ -148,6 +148,11 @@ def chat_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any
 
     # Chat UI container
     chat_box = st.container(height=750)
+    
+    # Default Greeting if empty
+    if len(msgs.messages) == 0:
+        msgs.add_ai_message(f"안녕하세요! {asset_name} 시장 분석 전문가 AI Analyst입니다. 특정 기간의 가격 변동 원인이나 주요 뉴스에 대해 무엇이든 물어보세요.")
+
     for msg in msgs.messages:
         chat_box.chat_message(msg.type).write(msg.content)
 
@@ -302,13 +307,14 @@ stock_api = init_stock_api()
 news_repo = init_news_repo()
 
 
-# --- Initial State & Date Handling ---
 if "init_done" not in st.session_state:
     st.session_state.start_date = None
     st.session_state.end_date = None
-    st.session_state.timeline_page = 0
+    st.session_state.timeline_page = 0 
     st.session_state.timeline_search = ""
-    st.session_state.timeline_sort = "desc"
+    st.session_state.timeline_sort_by = "volatility" 
+    st.session_state.timeline_sort_order = "desc"
+    st.session_state.highlighted_events = {} 
     st.session_state.init_done = True
 
 # --- Control Logic (Asset Mapping) ---
@@ -323,12 +329,23 @@ with col_main_left:
     
     # --- Top Bar Controls (Inside Left Column) ---
     with st.container():
-        t_col1, t_col2, t_col3, t_col4 = st.columns([1.5, 1, 1, 1], gap="small")
+        # Field columns (t_cols) and Button column (t_btn)
+        t_cols, t_btn = st.columns([0.65, 0.35], gap="large") 
         
-        with t_col1:
-            # Load selection from query if possible, otherwise first one
-            selected_ko = st.selectbox("종목 선택", asset_ko_names)
-            asset_name = asset_map.get(selected_ko, "Unknown")
+        with t_cols:
+            t_col1, t_col2, t_col3 = st.columns([1, 0.8, 0.8], gap="small")
+            with t_col1:
+                # Format labels as "Name (Symbol)"
+                def format_asset_label(name_ko):
+                    code = asset_map.get(name_ko, name_ko)
+                    return f"{name_ko} ({code})"
+                
+                selected_ko = st.selectbox(
+                    "종목 선택", 
+                    options=asset_ko_names, 
+                    format_func=format_asset_label
+                )
+                asset_name = asset_map.get(selected_ko, "Unknown")
             
         df = stock_api.get_prices(asset_name)
         
@@ -350,15 +367,24 @@ with col_main_left:
                 new_start = st.date_input("시작일", key=f"sdt_{st.session_state.start_date}", value=st.session_state.start_date)
             with t_col3:
                 new_end = st.date_input("종료일", key=f"edt_{st.session_state.end_date}", value=st.session_state.end_date)
-            with t_col4:
-                st.write("") # Adjust vertical alignment
-                st.write("")
-                if st.button("🔄 기간 초기화", use_container_width=True):
-                     st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
-                     st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
-                     st.query_params["start_date"] = str(st.session_state.start_date)
-                     st.query_params["end_date"] = str(st.session_state.end_date)
-                     st.rerun()
+            with t_btn:
+                # Vertical alignment fix
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) 
+                # Equal width columns for buttons
+                tc3, tc4 = st.columns([1, 1], gap="small")
+                with tc3:
+                    if st.button("🔄 기간 초기화", use_container_width=True):
+                        st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
+                        st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
+                        st.session_state.highlighted_events = {} # Clear flags on full reset
+                        st.query_params["start_date"] = str(st.session_state.start_date)
+                        st.query_params["end_date"] = str(st.session_state.end_date)
+                        st.rerun()
+                with tc4:
+                    has_flags = len(st.session_state.get("highlighted_events", {})) > 0
+                    if st.button("🚫 모든 플래그 제거", key="global_clear_flag", help="차트의 모든 강조 표시를 지웁니다", disabled=not has_flags, use_container_width=True):
+                        st.session_state.highlighted_events = {}
+                        st.rerun()
 
             # Update State & Query Params
             if new_start != st.session_state.start_date:
@@ -440,6 +466,35 @@ with col_main_left:
                 hovermode="x unified"
             )
             
+            # --- Multi-Event Flagging (v-lines) ---
+            highlighted = st.session_state.get("highlighted_events", {})
+            for ev_id, info in highlighted.items():
+                h_date = info.get("date")
+                h_title = info.get("title")
+                
+                fig.add_vline(
+                    x=h_date, 
+                    line_width=2, 
+                    line_dash="dash", 
+                    line_color="#00C7BE",
+                    layer="above"
+                )
+                fig.add_annotation(
+                    x=h_date,
+                    y=1,
+                    yref="paper",
+                    text=f"🚩 {h_title[:20]}..." if len(h_title) > 20 else f"🚩 {h_title}",
+                    showarrow=False,
+                    font=dict(color="#00C7BE", size=11),
+                    bgcolor="rgba(0,0,0,0.7)",
+                    bordercolor="#00C7BE",
+                    borderwidth=1,
+                    borderpad=4,
+                    yshift=10,
+                    xanchor="left" if pd.to_datetime(h_date).month < 6 else "right"
+                )
+                
+
             st.plotly_chart(fig, on_select="rerun", selection_mode="box", key="main_chart", use_container_width=True)
 
 # --- Side Panel Content (Right Column - Starts from top) ---
@@ -448,7 +503,7 @@ with col_main_right:
     
     with tab_ev:
         @st.cache_data(ttl=3600)
-        def get_cached_events(asset_name, start_date, end_date, keyword, page, sort_order):
+        def get_cached_events(asset_name, start_date, end_date, keyword, page, sort_by="date", sort_order="desc"):
             limit = 100
             offset = page * limit
             return news_repo.search_events(
@@ -458,6 +513,7 @@ with col_main_right:
                 keyword=keyword,
                 limit=limit,
                 offset=offset,
+                sort_by=sort_by,
                 sort_order=sort_order
             )
 
@@ -465,6 +521,7 @@ with col_main_right:
         def render_timeline(asset_name, start_date, end_date):
             # 1. Search, Sort & Refresh Controls
             sc1, sc2, sc3 = st.columns([2, 1, 0.3])
+            
             with sc1:
                 search_query = st.text_input(
                     "Search Events", 
@@ -473,34 +530,56 @@ with col_main_right:
                     label_visibility="collapsed"
                 )
             with sc2:
-                sort_order = st.selectbox(
+                sort_options = {
+                    "최신순": ("date", "desc"),
+                    "과거순": ("date", "asc"),
+                    "변동성 높은순": ("volatility", "desc"),
+                    "변동성 낮은순": ("volatility", "asc")
+                }
+                current_sort = (st.session_state.get("timeline_sort_by", "date"), st.session_state.get("timeline_sort_order", "desc"))
+                
+                # Find default index
+                default_idx = 0
+                for i, (label, val) in enumerate(sort_options.items()):
+                    if val == current_sort:
+                        default_idx = i
+                        break
+
+                selected_label = st.selectbox(
                     "Sort", 
-                    options=["desc", "asc"],
-                    format_func=lambda x: "Newest" if x == "desc" else "Oldest",
-                    index=0 if st.session_state.get("timeline_sort") == "desc" else 1,
+                    options=list(sort_options.keys()),
+                    index=default_idx,
                     label_visibility="collapsed"
                 )
+                sort_by, sort_order = sort_options[selected_label]
             with sc3:
                 if st.button("🔄", key="ref_ev", help="Refresh Data", use_container_width=True):
                     get_cached_events.clear()
                     st.rerun()
             
             # Update state and reset page if search or sort changes
-            if search_query != st.session_state.get("timeline_search") or sort_order != st.session_state.get("timeline_sort"):
+            if (search_query != st.session_state.get("timeline_search") or 
+                sort_by != st.session_state.get("timeline_sort_by") or 
+                sort_order != st.session_state.get("timeline_sort_order")):
                 st.session_state.timeline_search = search_query
-                st.session_state.timeline_sort = sort_order
+                st.session_state.timeline_sort_by = sort_by
+                st.session_state.timeline_sort_order = sort_order
                 st.session_state.timeline_page = 0
                 st.rerun()
 
             # 2. Fetch Data
+            sort_by = st.session_state.get("timeline_sort_by", "date")
+            sort_order = st.session_state.get("timeline_sort_order", "desc")
+            
             page = st.session_state.get("timeline_page", 0)
             display_events = get_cached_events(
                 asset_name, 
                 start_date, 
                 end_date, 
-                st.session_state.timeline_search,
+                search_query,
                 page,
-                st.session_state.timeline_sort
+                sort_by=sort_by,
+                sort_order=sort_order
             )
             total_count = news_repo.count_events(
                 start_date, 
@@ -525,7 +604,7 @@ with col_main_right:
                             t = ev.get('title', 'No Title')
                             desc = ev.get('description', '')
                             
-                            # Styled Header: Date (Small) + Title (Large)
+                            # Header: Date Only
                             st.markdown(f"<small style='color:#888;'>📅 {d}</small>", unsafe_allow_html=True)
                             st.markdown(f"#### {t}")
                             
@@ -539,6 +618,20 @@ with col_main_right:
                                     url = art.get('url', '')
                                     if url: st.markdown(f"<small style='color:#007AFF'>[- {title}]({url})</small>", unsafe_allow_html=True)
                                     else: st.markdown(f"<small style='color:#666'>- {title}</small>", unsafe_allow_html=True)
+                            
+                            # Footer: Explicit Flag Toggle Button
+                            st.write("") # Spacer
+                            ev_id = ev.get('id')
+                            is_highlighted = ev_id in st.session_state.get("highlighted_events", {})
+                            
+                            if is_highlighted:
+                                if st.button("📍 그래프에서 제거하기", key=f"rm_{ev_id}", use_container_width=True, type="secondary"):
+                                    del st.session_state.highlighted_events[ev_id]
+                                    st.rerun()
+                            else:
+                                if st.button("📍 그래프에 배치하기", key=f"add_{ev_id}", use_container_width=True, type="primary"):
+                                    st.session_state.highlighted_events[ev_id] = {"date": d, "title": t}
+                                    st.rerun()
             
             # 5. Pagination Buttons
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])

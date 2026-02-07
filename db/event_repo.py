@@ -1,6 +1,6 @@
 from datetime import date
 from sqlalchemy.orm import Session
-from db.database import Asset, Event, Article
+from db.database import Asset, Event, Article, Price
 
 class EventRepository:
     def __init__(self, engine):
@@ -14,6 +14,7 @@ class EventRepository:
         keyword: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        sort_by: str = "date", # New: "date" or "volatility"
         sort_order: str = "desc"
     ) -> list[dict]:
         """
@@ -31,11 +32,23 @@ class EventRepository:
                     (Event.title.ilike(search_filter)) | (Event.description.ilike(search_filter))
                 )
             
-            # Count for potential UI info (though we have a separate count method)
-            if sort_order.lower() == "asc":
-                query = query.order_by(Event.date.asc(), Event.id.asc())
+            
+            if sort_by == "volatility":
+                # Join with Price to get daily spread
+                query = query.outerjoin(Price, (Event.date == Price.time) & (Event.asset_id == Price.asset_id))
+                # Volatility Metric: (High - Low) / Low
+                # We use Low as divisor for percentage-like sorting. 
+                # Use CASE or null-safe logic if needed, but here simple subtraction works for sorting relevance.
+                vol_metric = (Price.high - Price.low)
+                if sort_order.lower() == "asc":
+                    query = query.order_by(vol_metric.asc(), Event.id.asc())
+                else:
+                    query = query.order_by(vol_metric.desc(), Event.id.desc())
             else:
-                query = query.order_by(Event.date.desc(), Event.id.desc())
+                if sort_order.lower() == "asc":
+                    query = query.order_by(Event.date.asc(), Event.id.asc())
+                else:
+                    query = query.order_by(Event.date.desc(), Event.id.desc())
             
             events = query.limit(limit).offset(offset).all()
             

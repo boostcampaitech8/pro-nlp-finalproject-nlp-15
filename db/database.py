@@ -23,7 +23,10 @@ class Price(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     asset_id = Column("commodity_id", Integer, ForeignKey("commodity.id"), nullable=False)
-    time = Column(Date, nullable=False) # Changed from DateTime to Date based on samples
+    time = Column(Date, nullable=False) 
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
     close = Column(Float, nullable=False)
     volume = Column(Float)
     
