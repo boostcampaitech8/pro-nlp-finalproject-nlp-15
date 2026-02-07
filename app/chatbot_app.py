@@ -56,9 +56,7 @@ st.markdown("""
     }
     
     .main-title {
-        background: linear-gradient(90deg, #007AFF, #00C7BE);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #ffffff;
         font-weight: 700;
         font-size: 2.2rem;
         margin-bottom: 1rem;
@@ -318,7 +316,7 @@ asset_ko_names = list(asset_map.keys())
 col_main_left, col_main_right = st.columns([2.5, 1], gap="large")
 
 with col_main_left:
-    st.markdown('<div class="main-title">Graph Insight</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">차트 읽어주는 AI - Graph Insight</div>', unsafe_allow_html=True)
     
     # --- Top Bar Controls (Inside Left Column) ---
     with st.container():
