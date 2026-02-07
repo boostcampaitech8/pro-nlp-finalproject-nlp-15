@@ -14,11 +14,16 @@ overrides:
 
 # Vector DB
 vector_db:
-  url: "http://lori2mai11ya.asuscomm.com:6333"
+  url: "${oc.env:QDRANT_URL}"
   knowledge_base_collection: "knowledge_base_yejoon"
   event_collection: "events_yejoon"
 
 # Embedding models
 embedding:
-  dense_model: "telepix/PIXIE-Rune-Preview"
-  sparse_model: "telepix/PIXIE-Splade-Preview"
+  mode: "api"  # Options: "local", "api"
+  dense:
+    model: "telepix/PIXIE-Rune-Preview"
+    api_url: "${oc.env:DENSE_EMBEDDING_API_URL}"
+  sparse:
+    model: "telepix/PIXIE-Splade-Preview"
+    api_url: "${oc.env:SPARSE_EMBEDDING_API_URL}"

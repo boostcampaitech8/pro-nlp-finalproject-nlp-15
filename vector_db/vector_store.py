@@ -1,4 +1,5 @@
 import os
+import requests
 from typing import List, Dict, Optional, Any, cast
 import torch
 from sentence_transformers import SentenceTransformer
@@ -13,7 +14,7 @@ load_dotenv()
 
 class VectorStore:
     client: Optional[QdrantClient] = None
-    dense_model: SentenceTransformer
+    dense_model: Optional[SentenceTransformer] = None
     sparse_model: Optional[AutoModelForMaskedLM] = None
     sparse_tokenizer: Optional[AutoTokenizer] = None
     
@@ -23,48 +24,66 @@ class VectorStore:
     def __init__(
         self, 
         qdrant_url: str,
+        embedding_cfg: Optional[Any] = None,
         dense_model_name: str = "telepix/PIXIE-Rune-Preview",
         sparse_model_name: str = "telepix/PIXIE-Splade-Preview"
     ):
-        # Initialize Qdrant client with timeout
+        """
+        Initialize VectorStore. 
+        If embedding_cfg is provided (Hydra), it uses it to decide between 'local' or 'api' mode.
+        If not provided, it defaults to 'local' for backward compatibility.
+        """
+        # 1. Initialize Qdrant Client
         try:
             self.client = QdrantClient(
                 url=qdrant_url, 
                 api_key=os.getenv("QDRANT_API_KEY"),
-                timeout=10  # 10 second timeout
+                timeout=10
             )
-            # Test connection
             self.client.get_collections()
             print(f"✅ Connected to Qdrant: {qdrant_url}")
         except Exception as e:
             print(f"❌ Qdrant connection failed: {e}")
             self.client = None
-        
-        if torch.cuda.is_available():
-            self.device = "cuda"
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            self.device = "mps"
-        else:
-            self.device = "cpu"
-        
-        # Load models using class-level cache
-        # 1. Dense Model
-        if dense_model_name not in VectorStore._model_cache:
-            print(f"📦 Loading Dense Model: {dense_model_name}...")
-            VectorStore._model_cache[dense_model_name] = SentenceTransformer(dense_model_name, device=self.device)
-        self.dense_model = VectorStore._model_cache[dense_model_name]
-        
-        # 2. Sparse Model & Tokenizer
-        if sparse_model_name:
-            cache_key = f"sparse_{sparse_model_name}"
-            if cache_key not in VectorStore._model_cache:
-                print(f"📦 Loading Sparse Model: {sparse_model_name}...")
-                tokenizer = AutoTokenizer.from_pretrained(sparse_model_name)
-                model = AutoModelForMaskedLM.from_pretrained(sparse_model_name, trust_remote_code=True).to(self.device)
-                model.eval()
-                VectorStore._model_cache[cache_key] = (tokenizer, model)
+
+        self.cfg = embedding_cfg
+        self.mode = "local"
+        if self.cfg and hasattr(self.cfg, "mode"):
+            self.mode = self.cfg.mode
+
+        print(f"🛠️  VectorStore Mode: {self.mode}")
+
+        # 2. Local Model Loading (only if mode is local)
+        if self.mode == "local":
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
+                
+            # Dense Model
+            if dense_model_name not in VectorStore._model_cache:
+                print(f"📦 Loading Dense Model: {dense_model_name}...")
+                VectorStore._model_cache[dense_model_name] = SentenceTransformer(dense_model_name, device=self.device)
+            self.dense_model = VectorStore._model_cache[dense_model_name]
             
-            self.sparse_tokenizer, self.sparse_model = VectorStore._model_cache[cache_key]
+            # Sparse Model & Tokenizer
+            if sparse_model_name:
+                cache_key = f"sparse_{sparse_model_name}"
+                if cache_key not in VectorStore._model_cache:
+                    print(f"📦 Loading Sparse Model: {sparse_model_name}...")
+                    tokenizer = AutoTokenizer.from_pretrained(sparse_model_name)
+                    model = AutoModelForMaskedLM.from_pretrained(sparse_model_name, trust_remote_code=True).to(self.device)
+                    model.eval()
+                    VectorStore._model_cache[cache_key] = (tokenizer, model)
+                
+                self.sparse_tokenizer, self.sparse_model = VectorStore._model_cache[cache_key]
+        else:
+            # API Mode: No local models needed
+            self.dense_model = None
+            self.sparse_model = None
+            self.sparse_tokenizer = None
 
     def create_payload_index(self, collection_name: str, field_name: str, field_type: str = "datetime"):
         """Utility to ensure payload indexes exist."""
@@ -83,8 +102,11 @@ class VectorStore:
             pass
 
     def _get_sparse_vector(self, text: str) -> models.SparseVector:
-        """Generates a sparse vector for a single query text using SPLADE pooling."""
-        if not hasattr(self, "sparse_tokenizer") or self.sparse_tokenizer is None:
+        """Generates a sparse vector using either local model or remote API."""
+        if self.mode == "api":
+            return self._get_sparse_vector_api(text)
+            
+        if not self.sparse_tokenizer:
             raise ValueError("Sparse tokenizer not initialized. Provide sparse_model_name during initialization.")
             
         inputs = self.sparse_tokenizer([text], return_tensors="pt", padding=True, truncation=True).to(self.device)
@@ -94,7 +116,6 @@ class VectorStore:
             
             # SPLADE transformation
             weights = torch.log(1 + torch.relu(logits))
-            # No need to mask for single text usually, but for consistency:
             weights = weights * inputs['attention_mask'].unsqueeze(-1)
             sparse_vec_pt, _ = torch.max(weights, dim=1)
             
@@ -104,9 +125,29 @@ class VectorStore:
                 values=sparse_vec_pt[0][nonzero_indices].tolist()
             )
 
+    def _get_sparse_vector_api(self, text: str) -> models.SparseVector:
+        """Fetch sparse vector from remote API."""
+        if not self.cfg or not hasattr(self.cfg, "sparse") or not hasattr(self.cfg.sparse, "api_url"):
+            raise ValueError("Sparse API configuration (api_url) is missing in rag.yaml.")
+            
+        url = self.cfg.sparse.api_url
+        response = requests.post(url, json={"text": text}, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        vec = data["sparse_vector"]
+        return models.SparseVector(
+            indices=vec["indices"],
+            values=vec["values"]
+        )
+
     def _get_sparse_vectors(self, texts: List[str]) -> List[models.SparseVector]:
-        """Generates multiple sparse vectors using SPLADE pooling (vectorized)."""
-        if not hasattr(self, "sparse_tokenizer") or self.sparse_tokenizer is None:
+        """Generates multiple sparse vectors."""
+        if self.mode == "api":
+            # Current implementation of splade API seems to handle single text. 
+            # If batching is needed, loop or update API.
+            return [self._get_sparse_vector_api(t) for t in texts]
+            
+        if not self.sparse_tokenizer:
             raise ValueError("Sparse tokenizer not initialized.")
             
         inputs = self.sparse_tokenizer(texts, return_tensors="pt", padding=True, truncation=True).to(self.device)
@@ -155,7 +196,7 @@ class VectorStore:
         if not self.client:
             return []
             
-        dense_vec = self.dense_model.encode(query).tolist()
+        dense_vec = self.embed_batch_dense([query])[0]
         sparse_vec = self._get_sparse_vector(query)
         
         # Build Filter
@@ -228,8 +269,11 @@ class VectorStore:
         # Use model dimension if not provided
         if dense_vector_size is not None:
             actual_size: int = dense_vector_size
-        else:
+        elif self.dense_model:
             actual_size = cast(int, self.dense_model.get_sentence_embedding_dimension())
+        else:
+            # Default for PIXIE if API mode and no size provided
+            actual_size = 1024 
 
         # Delete if exists and force_recreate
         if force_recreate and self.collection_exists(collection_name):
@@ -293,10 +337,42 @@ class VectorStore:
     
     def embed_batch_dense(self, texts: List[str]) -> List[List[float]]:
         """Generate dense embeddings for a batch of texts."""
+        if self.mode == "api":
+            return self._get_dense_vectors_api(texts)
+            
+        if not self.dense_model:
+            raise ValueError("Dense model not initialized.")
+            
         return self.dense_model.encode(texts, batch_size=32, show_progress_bar=True).tolist()
     
+    def _get_dense_vectors_api(self, texts: List[str]) -> List[List[float]]:
+        """Fetch dense embeddings from remote API."""
+        if not self.cfg or not hasattr(self.cfg, "dense") or not hasattr(self.cfg.dense, "api_url"):
+            raise ValueError("Dense API configuration (api_url) is missing in rag.yaml.")
+            
+        url = self.cfg.dense.api_url
+        payload = {
+            "texts": texts,
+            "is_query": True,
+            "normalize": True
+        }
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data["embeddings"]
+
     def embed_batch_sparse(self, texts: List[str], mini_batch_size: int = 32) -> List[models.SparseVector]:
         """Generate sparse embeddings for a batch of texts using controlled mini-batching."""
+        if self.mode == "api":
+            # API might be single or batch. We follow the local mini-batching pattern.
+            sparse_vectors = []
+            for i in range(0, len(texts), mini_batch_size):
+                batch_texts = texts[i : i + mini_batch_size]
+                # Batching via comprehension as current Splade API seems single-text
+                batch_vectors = [self._get_sparse_vector_api(t) for t in batch_texts]
+                sparse_vectors.extend(batch_vectors)
+            return sparse_vectors
+
         sparse_vectors = []
         total = len(texts)
         

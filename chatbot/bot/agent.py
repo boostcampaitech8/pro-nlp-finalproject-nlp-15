@@ -1,3 +1,4 @@
+import uuid
 from typing import Any
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from db.price_repo import PriceRepository
 from db.event_repo import EventRepository
 from db.article_repo import ArticleRepository
 from vector_db.vector_store import VectorStore
+from langfuse.types import TraceContext
 from db.database import get_engine, Asset
 
 # 도구 함수 임포트 (LangChain @tool 데코레이터 사용)
@@ -51,7 +53,8 @@ class FinancialAgent:
         rag_cfg = cfg.get('rag', {})
         vector_db_cfg = rag_cfg.get('vector_db', {})
         self.vector_store = VectorStore(
-            qdrant_url=vector_db_cfg.get('url')
+            qdrant_url=vector_db_cfg.get('url'),
+            embedding_cfg=rag_cfg.get('embedding')
         )
         
         self.kb_collection = vector_db_cfg.get('knowledge_base_collection', "knowledge_base")
@@ -91,14 +94,19 @@ class FinancialAgent:
         user_query: str, 
         start_date: Any, 
         end_date: Any, 
-        chat_history: list[Any]
+        chat_history: list[Any],
+        system_prompt_override: str | None = None,
+        tags: list[str] | None = None
     ):
         """
         🤖 Agentic 모드: LLM이 사용자 질문에 따라 필요한 도구만 선택하여 호출
         """
         # === 1. 시스템 프롬프트 준비 ===
-        persona_prompt = self.prompt_manager.get_system_prompt()
-        persona_text = persona_prompt.compile() if hasattr(persona_prompt, "compile") else str(persona_prompt)
+        if system_prompt_override:
+            persona_text = system_prompt_override
+        else:
+            persona_prompt = self.prompt_manager.get_system_prompt()
+            persona_text = persona_prompt.compile() if hasattr(persona_prompt, "compile") else str(persona_prompt)
         
         # Data range from Config
         actual_data_start = self.cfg.system.data_range.start
@@ -142,8 +150,22 @@ class FinancialAgent:
         # Add current request
         messages.append(HumanMessage(content=context_prefix + user_query))
         
-        tags = [asset_name, f"{start_date}~{end_date}"]
-        trace_handler = CallbackHandler()
+        # Combine basic tags with custom tags
+        base_tags = [asset_name, f"{start_date}~{end_date}"]
+        if tags:
+            base_tags.extend(tags)
+            
+        # Generate a unique trace ID for this entire agentic session
+        trace_id = str(uuid.uuid4())
+        
+        # Initialize CallbackHandler ONCE with a trace context to group everything
+        trace_handler = CallbackHandler(
+            trace_context=TraceContext(trace_id=trace_id)
+        )
+        
+        # We can also pass initial metadata to the trace via the first message's config or update_trace
+        # However, for grouping, trace_id in trace_context is the primary mechanism.
+        
         iteration_count = 0
         max_iterations = 10
         intermediate_steps: list[Any] = []
@@ -159,7 +181,12 @@ class FinancialAgent:
                 api_messages, 
                 config={
                     "callbacks": [trace_handler],
-                    "metadata": {"langfuse_tags": tags}
+                    "metadata": {
+                        "langfuse_tags": base_tags,
+                        "trace_name": "Financial Agent Analysis",
+                        "asset": asset_name,
+                        "query": user_query
+                    }
                 }
             ):
                 if hasattr(chunk, "content") and chunk.content:
@@ -205,8 +232,21 @@ class FinancialAgent:
                         try:
                             res = tool_map[tool_name].run(tool_call['args'], callbacks=[trace_handler])
                             res_msg = ToolMessage(content=str(res), tool_call_id=tool_call['id'])
+                            # Yield tool result for logging/experimentation
+                            yield {
+                                "type": "tool_result",
+                                "tool": tool_name,
+                                "input": tool_call['args'],
+                                "output": str(res)
+                            }
                         except Exception as e:
                             res_msg = ToolMessage(content=f"Error: {str(e)}", tool_call_id=tool_call['id'])
+                            yield {
+                                "type": "tool_error",
+                                "tool": tool_name,
+                                "input": tool_call['args'],
+                                "output": f"Error: {str(e)}"
+                            }
                     else:
                         res_msg = ToolMessage(content=f"Tool {tool_name} not available", tool_call_id=tool_call['id'])
                     

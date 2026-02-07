@@ -1,13 +1,11 @@
 from datetime import date
 from sqlalchemy.orm import Session
 from db.database import Asset, Event, Article
-import streamlit as st
 
 class EventRepository:
     def __init__(self, engine):
         self.engine = engine
 
-    @st.cache_data(ttl=3600)
     def search_events(_self, start_date: date, end_date: date, asset_symbol: str | None = None, keywords: list[str] | None = None) -> list[dict]:
         """
         Retrieves events from the database, filtered by date range and optionally by asset or keywords.

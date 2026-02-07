@@ -277,14 +277,18 @@ else:
         
         # Tab 1: Timeline
         with tab_ev:
-            @st.fragment
-            def render_timeline(asset_name, start_date, end_date):
-                # Load events (Lazy load inside fragment)
-                display_events = news_repo.search_events(
+            @st.cache_data(ttl=3600)
+            def get_cached_events(asset_name, start_date, end_date):
+                return news_repo.search_events(
                     start_date, 
                     end_date,
                     asset_symbol=asset_name
                 )
+
+            @st.fragment
+            def render_timeline(asset_name, start_date, end_date):
+                # Load events using the app-level cache
+                display_events = get_cached_events(asset_name, start_date, end_date)
                 
                 # Header with refresh button
                 col1, col2 = st.columns([3, 1])
@@ -293,7 +297,7 @@ else:
                     st.caption(f"📅 {start_date} ~ {end_date}")
                 with col2:
                     if st.button("🔄 Refresh", key="refresh_events", width="stretch"):
-                        news_repo.search_events.clear()
+                        get_cached_events.clear()
                         st.rerun()
                 
                 # Scrollable Container for Events

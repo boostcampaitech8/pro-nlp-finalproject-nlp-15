@@ -3,19 +3,16 @@ from datetime import date
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from db.database import Asset, Price
-import streamlit as st
 
 class PriceRepository:
     def __init__(self, engine):
         self.engine = engine
 
-    @st.cache_data(ttl=3600)
     def list_assets(_self) -> dict[str, str]:
         """Returns mapping of {name_ko: code} for assets in the database."""
         with Session(_self.engine) as session:
             return {str(a.name_ko): str(a.code) for a in session.query(Asset).all()}
 
-    @st.cache_data(ttl=3600)  # Cache for 1 hour
     def get_prices(_self, asset_symbol: str) -> pd.DataFrame:
         """
         Loads price data for a given asset from SQLite.

@@ -1,4 +1,3 @@
-import streamlit as st
 from sqlalchemy.orm import Session
 from db.database import Article
 
@@ -6,7 +5,6 @@ class ArticleRepository:
     def __init__(self, engine):
         self.engine = engine
 
-    @st.cache_data(ttl=3600)
     def get_article(_self, article_id: str) -> dict | None:
         """Retrieves a single article by its ID from the database."""
         with Session(_self.engine) as session:

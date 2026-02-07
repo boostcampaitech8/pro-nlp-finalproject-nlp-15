@@ -2,10 +2,7 @@ import os
 from typing import Optional, Literal
 from langchain_core.tools import tool
 from tavily import TavilyClient
-from dotenv import load_dotenv
 
-# load_dotenv() is typically called in the entry point, but kept here for tool independence
-load_dotenv()
 
 @tool
 def web_search(
@@ -16,25 +13,19 @@ def web_search(
     time_range: Optional[Literal['day', 'week', 'month', 'year']] = None
 ) -> str:
     """
-    Search the web for real-time or historical information using Tavily API.
+    Search the web for supplementary information or context that is missing from the internal news database.
     
-    📌 WHEN TO USE:
-    - User asks for latest news or specific past events not in local DB.
-    - Need to find external URLs for deep analysis.
-    
-    📌 DATE FILTERING:
-    - If user specifies a year (e.g., 2022), MUST use start_date='2022-01-01' and end_date='2022-12-31'.
-    - For recent news, use time_range='day', 'week', 'month', or 'year'.
+    CRITICAL USAGE RULES:
+    1. USE ONLY AS A LAST RESORT: Always try `get_period_overview`, `search_events_by_keyword`, and `search_knowledge_base` first.
+    2. SUPPLEMENTARY ONLY: Use this tool ONLY if the internal database fails to provide sufficient information.
+    3. NO RECENT DATA: If the user asks for data beyond the project scope, inform them you cannot provide that information instead of overusing web search.
     
     Args:
-        query: Search query string.
-        max_results: Number of results (default 5).
-        start_date: Optional. Filter results from this date (YYYY-MM-DD).
-        end_date: Optional. Filter results until this date (YYYY-MM-DD).
-        time_range: Optional. Relative time range ('day', 'week', 'month', 'year').
-        
-    Returns:
-        Structured string with search results.
+        query: The search query (e.g., "Corn ethanol demand shift details 2021", "Specifics of 2012 drought impact on ZC").
+        max_results: The number of search results to retrieve (default: 5).
+        start_date: The start date for filtering (YYYY-MM-DD). Use this to align with the historical period being analyzed.
+        end_date: The end date for filtering (YYYY-MM-DD).
+        time_range: Use this ONLY for very recent news ('day', 'week', 'month', 'year').
     """
     api_key = os.getenv("TAVILY_API_KEY")
     if not api_key:
