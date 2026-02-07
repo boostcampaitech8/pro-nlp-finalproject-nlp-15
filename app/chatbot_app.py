@@ -127,8 +127,9 @@ def chat_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any
 @st.fragment
 def multi_agent_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any):
     """
-    Renders the Multi-Agent Debate interface.
+    Renders the Multi-Agent Debate interface with refined UI/UX.
     """
+    st.markdown(f"### ⚔️ AI Market Debate: {asset_name}")
     arena = init_multi_agent_arena()
     
     col_btn, col_opt = st.columns([0.7, 0.3])
@@ -139,69 +140,98 @@ def multi_agent_interface(asset_name: str, start_date: typing.Any, end_date: typ
         st.session_state.debate_running = True
         st.session_state.debate_messages = []
         st.session_state.debate_rounds = rounds
+
+    # Guide: Display below the button, but hide during debate
+    if not st.session_state.get("debate_running", False):
+        st.info("""
+        **토론 구성 및 시스템 가이드**
+        1. **Analyst (시장 분석관)**: 객관적인 데이터를 바탕으로 핵심 사건과 가격 동향을 조사하여 **Fact Book**을 작성합니다.
+        2. **Bear Analyst (하락론자)**: 시장의 잠재적 리스크, 공급 과잉, 매도 압력 등 **부정적 요인**에 집중합니다.
+        3. **Bull Strategist (상승론자)**: 시장의 호재, 수요 증가, 성장 잠재력 등 **긍정적 동인**을 중심으로 대응합니다.
+        4. **Market Verdict (최종 판결)**: 양측의 논리를 객관적으로 평가하여 시장의 향후 방향성에 대한 **최종 결론**을 내립니다.
+        """)
         
     if "debate_running" in st.session_state and st.session_state.debate_running:
-        status_box = st.empty()
+        analytical_status = st.status("🔍 Initializing Market Research...", expanded=True)
         log_box = st.container(height=650)
         
         # Prepare data for debate
-        with st.spinner("Preparing facts..."):
+        with analytical_status:
+            st.write("📡 Fetching historical events and price data...")
             event_data = news_repo.search_events(start_date, end_date, asset_symbol=asset_name)
             price_summary = stock_api.get_summary(asset_name, start_date, end_date)
         
         async def run_it():
-            async for update in arena.run_debate_stream(
-                asset_name, 
-                str(end_date), 
-                event_data, 
-                price_summary,
-                rounds=st.session_state.get("debate_rounds", 1)
-            ):
-                status = update.get("status")
-                
-                if status == "analyzing":
-                    status_box.info(update.get("message"))
-                elif status == "fact_book":
-                    status_box.success("✅ Fact Book Ready!")
-                    with log_box.expander("📚 View Fact Book"):
-                        st.json(update.get("content"))
-                elif status in ["bear_warning", "bull_argue", "judging"]:
-                    status_box.info(update.get("message"))
-                elif status == "bear_stream":
-                    if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "bear":
-                        st.session_state.debate_messages.append({"role": "bear", "content": ""})
-                        # Bear on the Left
-                        col_bear, col_empty = log_box.columns([0.85, 0.15])
-                        with col_bear.chat_message("Bear Agent", avatar="app/static/bear_icon.png"):
-                            st.session_state.bear_placeholder = st.empty()
+            try:
+                async for update in arena.run_debate_stream(
+                    asset_name, 
+                    str(end_date), 
+                    event_data, 
+                    price_summary,
+                    rounds=st.session_state.get("debate_rounds", 1)
+                ):
+                    status = update.get("status")
                     
-                    st.session_state.debate_messages[-1]["content"] += update.get("chunk")
-                    st.session_state.bear_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+                    if status == "analyzing":
+                        analytical_status.update(label=f"🕵️ {update.get('message')}", state="running")
+                    
+                    elif status == "fact_book":
+                        analytical_status.update(label="✅ Fact Book Research Completed", state="complete", expanded=False)
+                        with log_box:
+                            with st.expander("📝 Market Case Brief (Fact Book)", expanded=True):
+                                fb = update.get("content", {})
+                                st.caption(f"**Target Asset**: {fb.get('asset')} | **Reference Date**: {fb.get('end_date')}")
+                                
+                                for i, item in enumerate(fb.get("critical_facts", []), 1):
+                                    st.markdown(f"#### Fact #{i}")
+                                    st.markdown(item.get("fact_summary"))
+                                    st.markdown("---")
+                    
+                    elif status in ["bear_warning", "bull_argue", "judging"]:
+                        # We don't need a status box update here as we're in the chat phase, 
+                        # but we can optionally show a transient message or log it.
+                        pass
+                        
+                    elif status == "bear_stream":
+                        if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "bear":
+                            st.session_state.debate_messages.append({"role": "bear", "content": ""})
+                            with log_box:
+                                col_bear, col_empty = st.columns([0.85, 0.15])
+                                with col_bear.chat_message("Bear Analyst", avatar="app/static/bear_icon.png"):
+                                    st.markdown("🔴 **Bear Analyst (하락론자)**")
+                                    st.session_state.bear_placeholder = st.empty()
+                        
+                        st.session_state.debate_messages[-1]["content"] += update.get("chunk")
+                        st.session_state.bear_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
 
-                elif status == "bull_stream":
-                    if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "bull":
-                        st.session_state.debate_messages.append({"role": "bull", "content": ""})
-                        # Bull on the Right
-                        col_empty, col_bull = log_box.columns([0.15, 0.85])
-                        with col_bull.chat_message("Bull Agent", avatar="app/static/bull_icon.png"):
-                            st.session_state.bull_placeholder = st.empty()
-                    
-                    st.session_state.debate_messages[-1]["content"] += update.get("chunk")
-                    st.session_state.bull_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+                    elif status == "bull_stream":
+                        if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "bull":
+                            st.session_state.debate_messages.append({"role": "bull", "content": ""})
+                            with log_box:
+                                col_empty, col_bull = st.columns([0.15, 0.85])
+                                with col_bull.chat_message("Bull Strategist", avatar="app/static/bull_icon.png"):
+                                    st.markdown("🟢 **Bull Strategist (상승론자)**")
+                                    st.session_state.bull_placeholder = st.empty()
+                        
+                        st.session_state.debate_messages[-1]["content"] += update.get("chunk")
+                        st.session_state.bull_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
 
-                elif status == "verdict_stream":
-                    if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "verdict":
-                        st.session_state.debate_messages.append({"role": "verdict", "content": ""})
-                        with log_box.chat_message("Market Verdict", avatar="app/static/verdict_icon.png"):
-                            st.subheader("⚖️ Final Verdict")
-                            st.session_state.verdict_placeholder = st.empty()
-                    
-                    st.session_state.debate_messages[-1]["content"] += update.get("chunk")
-                    st.session_state.verdict_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+                    elif status == "verdict_stream":
+                        if not st.session_state.debate_messages or st.session_state.debate_messages[-1]["role"] != "verdict":
+                            st.session_state.debate_messages.append({"role": "verdict", "content": ""})
+                            with log_box.chat_message("Market Verdict", avatar="app/static/verdict_icon.png"):
+                                st.markdown("### ⚖️ Final Market Verdict")
+                                st.session_state.verdict_placeholder = st.empty()
+                        
+                        st.session_state.debate_messages[-1]["content"] += update.get("chunk")
+                        st.session_state.verdict_placeholder.markdown(st.session_state.debate_messages[-1]["content"])
+            except Exception as e:
+                st.error(f"⚠️ Debate Interrupted: {str(e)}")
+            finally:
+                st.session_state.debate_running = False
 
         import asyncio
         asyncio.run(run_it())
-        st.session_state.debate_running = False
 
 # --- Dependencies ---
 stock_api = init_stock_api()
@@ -359,7 +389,7 @@ else:
 
     # --- Side Panel (Timeline & Chat) ---
     with col_side:
-        tab_ev, tab_chat, tab_multi = st.tabs(["📅 Timeline", "🤖 AI Analyst", "⚔️ Multi-Agent"])
+        tab_ev, tab_chat, tab_multi = st.tabs(["📅 Timeline", "🤖 AI Analyst", "⚔️ AI Debate"])
         
         # Tab 1: Timeline
         with tab_ev:

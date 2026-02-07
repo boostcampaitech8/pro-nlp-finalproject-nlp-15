@@ -9,6 +9,18 @@ class AnalystAgent:
         self.cfg = cfg
         self.llm_client = llm_client
 
+    def _extract_text(self, content: Any) -> str:
+        """Extract plain text from potential AIMessage/List/Dict structures."""
+        if not content:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(i.get("text", "") if isinstance(i, dict) else str(i) for i in content)
+        if isinstance(content, dict):
+            return content.get("text", "")
+        return str(content)
+
     async def create_fact_book(self, asset_name: str, end_date: str, event_data: list[dict[str, Any]], price_summary: str) -> dict[str, Any]:
         """
         원천 데이터를 바탕으로 Bull과 Bear가 토론할 수 있는 Fact Book을 생성합니다.
@@ -64,7 +76,8 @@ class AnalystAgent:
             ]
             
             investigation_response = self.llm_client.get_response(investigation_messages)
-            summary = investigation_response.content if hasattr(investigation_response, 'content') else str(investigation_response)
+            content = investigation_response.content if hasattr(investigation_response, 'content') else str(investigation_response)
+            summary = self._extract_text(content)
             fact_summaries.append({
                 "id": ev.get('id'),
                 "fact_summary": summary
