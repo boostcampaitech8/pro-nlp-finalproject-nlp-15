@@ -306,6 +306,9 @@ news_repo = init_news_repo()
 if "init_done" not in st.session_state:
     st.session_state.start_date = None
     st.session_state.end_date = None
+    st.session_state.timeline_page = 0
+    st.session_state.timeline_search = ""
+    st.session_state.timeline_sort = "desc"
     st.session_state.init_done = True
 
 # --- Control Logic (Asset Mapping) ---
@@ -445,37 +448,111 @@ with col_main_right:
     
     with tab_ev:
         @st.cache_data(ttl=3600)
-        def get_cached_events(asset_name, start_date, end_date):
-            return news_repo.search_events(start_date, end_date, asset_symbol=asset_name)
+        def get_cached_events(asset_name, start_date, end_date, keyword, page, sort_order):
+            limit = 100
+            offset = page * limit
+            return news_repo.search_events(
+                start_date, 
+                end_date, 
+                asset_symbol=asset_name,
+                keyword=keyword,
+                limit=limit,
+                offset=offset,
+                sort_order=sort_order
+            )
 
         @st.fragment
         def render_timeline(asset_name, start_date, end_date):
-            display_events = get_cached_events(asset_name, start_date, end_date)
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.caption(f"📊 {len(display_events)} 사건 발견")
-            with col2:
-                if st.button("🔄", key="refresh_events"):
+            # 1. Search, Sort & Refresh Controls
+            sc1, sc2, sc3 = st.columns([2, 1, 0.3])
+            with sc1:
+                search_query = st.text_input(
+                    "Search Events", 
+                    value=st.session_state.get("timeline_search", ""),
+                    placeholder="Keywords...",
+                    label_visibility="collapsed"
+                )
+            with sc2:
+                sort_order = st.selectbox(
+                    "Sort", 
+                    options=["desc", "asc"],
+                    format_func=lambda x: "Newest" if x == "desc" else "Oldest",
+                    index=0 if st.session_state.get("timeline_sort") == "desc" else 1,
+                    label_visibility="collapsed"
+                )
+            with sc3:
+                if st.button("🔄", key="ref_ev", help="Refresh Data", use_container_width=True):
                     get_cached_events.clear()
                     st.rerun()
             
-            with st.container(height=800):
-                for ev in display_events:
-                    with st.container(border=True):
-                        d = ev.get('start_date') or ev.get('date', 'Unknown')
-                        t = ev.get('title', 'No Title')
-                        desc = ev.get('description', '')
-                        st.markdown(f"**{d}** | {t}")
-                        if desc: st.markdown(f"<small style='color:#ccc'>{desc}</small>", unsafe_allow_html=True)
-                        
-                        articles = ev.get('articles', [])
-                        if articles:
-                            for art in articles[:2]:
-                                title = art.get('title', 'Untitled')
-                                url = art.get('url', '')
-                                if url: st.markdown(f"<small>[- {title}]({url})</small>", unsafe_allow_html=True)
-                                else: st.markdown(f"<small>- {title}</small>", unsafe_allow_html=True)
+            # Update state and reset page if search or sort changes
+            if search_query != st.session_state.get("timeline_search") or sort_order != st.session_state.get("timeline_sort"):
+                st.session_state.timeline_search = search_query
+                st.session_state.timeline_sort = sort_order
+                st.session_state.timeline_page = 0
+                st.rerun()
+
+            # 2. Fetch Data
+            page = st.session_state.get("timeline_page", 0)
+            display_events = get_cached_events(
+                asset_name, 
+                start_date, 
+                end_date, 
+                st.session_state.timeline_search,
+                page,
+                st.session_state.timeline_sort
+            )
+            total_count = news_repo.count_events(
+                start_date, 
+                end_date, 
+                asset_symbol=asset_name,
+                keyword=st.session_state.timeline_search
+            )
+            
+            # 3. Pagination & Status Header
+            start_idx = page * 100 + 1
+            end_idx = min((page + 1) * 100, total_count)
+            st.caption(f"📊 {start_idx}-{end_idx} of {total_count} events found")
+            
+            # 4. Scrollable Container
+            with st.container(height=750):
+                if not display_events:
+                    st.info("No events found matching your criteria.")
+                else:
+                    for ev in display_events:
+                        with st.container(border=True):
+                            d = ev.get('start_date') or ev.get('date', 'Unknown')
+                            t = ev.get('title', 'No Title')
+                            desc = ev.get('description', '')
+                            
+                            # Styled Header: Date (Small) + Title (Large)
+                            st.markdown(f"<small style='color:#888;'>📅 {d}</small>", unsafe_allow_html=True)
+                            st.markdown(f"#### {t}")
+                            
+                            if desc: 
+                                st.markdown(f"<div style='margin-bottom:0.5rem; font-size:0.95rem;'>{desc}</div>", unsafe_allow_html=True)
+                            
+                            articles = ev.get('articles', [])
+                            if articles:
+                                for art in articles[:2]:
+                                    title = art.get('title', 'Untitled')
+                                    url = art.get('url', '')
+                                    if url: st.markdown(f"<small style='color:#007AFF'>[- {title}]({url})</small>", unsafe_allow_html=True)
+                                    else: st.markdown(f"<small style='color:#666'>- {title}</small>", unsafe_allow_html=True)
+            
+            # 5. Pagination Buttons
+            p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
+            with p_col1:
+                if st.button("⬅️ Previous", disabled=(page == 0), use_container_width=True):
+                    st.session_state.timeline_page -= 1
+                    st.rerun()
+            with p_col2:
+                st.write(f"<p style='text-align:center; margin-top:0.5rem;'>Page {page + 1}</p>", unsafe_allow_html=True)
+            with p_col3:
+                has_next = (page + 1) * 100 < total_count
+                if st.button("Next ➡️", disabled=not has_next, use_container_width=True):
+                    st.session_state.timeline_page += 1
+                    st.rerun()
         
         render_timeline(asset_name, st.session_state.start_date, st.session_state.end_date)
 
