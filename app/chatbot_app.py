@@ -32,6 +32,72 @@ cfg = load_config()
 
 st.set_page_config(page_title="AI Financial Intelligence", layout="wide")
 
+# --- Style / CSS ---
+st.markdown("""
+    <style>
+    /* Premium Font & Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+    
+    * { font-family: 'Outfit', sans-serif; }
+    
+    .stApp {
+        background: radial-gradient(circle at top left, #0e1117, #1a1c24);
+    }
+    
+    /* Top Bar / Header */
+    .top-bar {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(15px);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+    }
+    
+    .main-title {
+        background: linear-gradient(90deg, #007AFF, #00C7BE);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 700;
+        font-size: 2.2rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* Metric Card Styling */
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem;
+        font-weight: 600;
+        color: #007AFF;
+    }
+    
+    /* Sidebar removal hack */
+    [data-testid="stSidebar"] {
+        display: none;
+    }
+    
+    /* Widget Styling */
+    .stSelectbox label, .stDateInput label {
+        color: #888 !important;
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    /* Button Animation */
+    button[kind="primary"] {
+        background: linear-gradient(90deg, #007AFF, #0051FF) !important;
+        border: none !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+    button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # === PERFORMANCE OPTIMIZATION: Cache expensive resources ===
 # VectorStore loads 2 embedding models (~3-5 seconds EACH TIME without caching)
 
@@ -239,217 +305,184 @@ news_repo = init_news_repo()
 
 
 # --- Initial State & Date Handling ---
-# 1. Initialize Asset & Date Range from Query Params or Defaults
 if "init_done" not in st.session_state:
     st.session_state.start_date = None
     st.session_state.end_date = None
     st.session_state.init_done = True
 
-# 2. Support Chart Selection (Box/Drag) at the very top
-def handle_chart_selection():
-    if "main_chart" in st.session_state and st.session_state.main_chart:
-        selected = st.session_state.main_chart
-        if "selection" in selected and "box" in selected["selection"]:
-            box = selected["selection"]["box"]
-            if box and "x" in box[0]:
-                x_range = box[0]["x"]
-                try:
-                    new_start = pd.to_datetime(x_range[0]).date()
-                    new_end = pd.to_datetime(x_range[1]).date()
-                    
-                    # Check if selection is actually new to avoid infinite rerun
-                    curr_start = st.query_params.get("start_date")
-                    curr_end = st.query_params.get("end_date")
-                    
-                    if str(new_start) != curr_start or str(new_end) != curr_end:
-                        st.query_params["start_date"] = str(new_start)
-                        st.query_params["end_date"] = str(new_end)
-                        st.session_state.start_date = new_start
-                        st.session_state.end_date = new_end
-                        st.toast(f"🏆 Period Selected: {new_start} ~ {new_end}")
-                        st.rerun()
-                except Exception: pass
+# --- Control Logic (Asset Mapping) ---
+asset_map = stock_api.list_assets()
+asset_ko_names = list(asset_map.keys())
 
-handle_chart_selection()
+# --- Main Layout Split ---
+col_main_left, col_main_right = st.columns([2.5, 1], gap="large")
 
-# --- Sidebar ---
-with st.sidebar:
-    st.title("🛡️ Analysis Settings")
+with col_main_left:
+    st.markdown('<div class="main-title">Graph Insight</div>', unsafe_allow_html=True)
     
-    # Asset Selection
-    asset_map = stock_api.list_assets()
-    asset_ko_names = list(asset_map.keys())
-    selected_ko = st.selectbox("종목 선택", asset_ko_names)
-    asset_name = asset_map.get(selected_ko, "Unknown")
+    # --- Top Bar Controls (Inside Left Column) ---
+    with st.container():
+        t_col1, t_col2, t_col3, t_col4 = st.columns([1.5, 1, 1, 1], gap="small")
+        
+        with t_col1:
+            # Load selection from query if possible, otherwise first one
+            selected_ko = st.selectbox("종목 선택", asset_ko_names)
+            asset_name = asset_map.get(selected_ko, "Unknown")
+            
+        df = stock_api.get_prices(asset_name)
+        
+        if not df.empty:
+            # Source of Truth: Query Params
+            q_start = st.query_params.get("start_date")
+            q_end = st.query_params.get("end_date")
+            
+            if q_start and q_end:
+                st.session_state.start_date = pd.to_datetime(q_start).date()
+                st.session_state.end_date = pd.to_datetime(q_end).date()
+            else:
+                st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
+                st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
+                st.query_params["start_date"] = str(st.session_state.start_date)
+                st.query_params["end_date"] = str(st.session_state.end_date)
 
-    # Data Load (for UI Chart)
-    df = stock_api.get_prices(asset_name)
-    
-    if not df.empty:
-        # Load dates from Query Params (Source of Truth)
-        q_start = st.query_params.get("start_date")
-        q_end = st.query_params.get("end_date")
-        
-        if q_start and q_end:
-            st.session_state.start_date = pd.to_datetime(q_start).date()
-            st.session_state.end_date = pd.to_datetime(q_end).date()
-        else:
-            # First time load or clear case - Range from Config (Defaulting to 2017-11 to 2026-01-31)
-            st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
-            st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
-            st.query_params["start_date"] = str(st.session_state.start_date)
-            st.query_params["end_date"] = str(st.session_state.end_date)
+            with t_col2:
+                new_start = st.date_input("시작일", key=f"sdt_{st.session_state.start_date}", value=st.session_state.start_date)
+            with t_col3:
+                new_end = st.date_input("종료일", key=f"edt_{st.session_state.end_date}", value=st.session_state.end_date)
+            with t_col4:
+                st.write("") # Adjust vertical alignment
+                st.write("")
+                if st.button("🔄 기간 초기화", use_container_width=True):
+                     st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
+                     st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
+                     st.query_params["start_date"] = str(st.session_state.start_date)
+                     st.query_params["end_date"] = str(st.session_state.end_date)
+                     st.rerun()
 
-        # --- Date Selection ---
-        st.divider()
-        st.subheader("📅 Date Range")
-        
-        # Dynamic keys based on current date values - forces widget recreation on date change
-        new_start = st.date_input(
-            "Start Date", 
-            key=f"sdt_{st.session_state.start_date}",
-            value=st.session_state.start_date
-        )
-        new_end = st.date_input(
-            "End Date", 
-            key=f"edt_{st.session_state.end_date}",
-            value=st.session_state.end_date
-        )
-        
-        # Update state and query params if user manually changes dates
-        if new_start != st.session_state.start_date:
-            st.session_state.start_date = new_start
-            st.query_params["start_date"] = str(new_start)
-            st.rerun()
-        if new_end != st.session_state.end_date:
-            st.session_state.end_date = new_end
-            st.query_params["end_date"] = str(new_end)
-            st.rerun()
-        
-        # Reset Button
-        if st.button("🔄 Reset Range"):
-             st.session_state.start_date = pd.to_datetime(cfg.system.data_range.start).date()
-             st.session_state.end_date = pd.to_datetime(cfg.system.data_range.end).date()
-             st.query_params["start_date"] = str(st.session_state.start_date)
-             st.query_params["end_date"] = str(st.session_state.end_date)
-             st.rerun()
+            # Update State & Query Params
+            if new_start != st.session_state.start_date:
+                st.session_state.start_date = new_start
+                st.query_params["start_date"] = str(new_start)
+                st.rerun()
+            if new_end != st.session_state.end_date:
+                st.session_state.end_date = new_end
+                st.query_params["end_date"] = str(new_end)
+                st.rerun()
+
+    # Chart Selection Sync
+    def handle_chart_selection():
+        if "main_chart" in st.session_state and st.session_state.main_chart:
+            selected = st.session_state.main_chart
+            if "selection" in selected and "box" in selected["selection"]:
+                box = selected["selection"]["box"]
+                if box and "x" in box[0]:
+                    x_range = box[0]["x"]
+                    try:
+                        ns = pd.to_datetime(x_range[0]).date()
+                        ne = pd.to_datetime(x_range[1]).date()
+                        if str(ns) != st.query_params.get("start_date") or str(ne) != st.query_params.get("end_date"):
+                            st.query_params["start_date"] = str(ns)
+                            st.query_params["end_date"] = str(ne)
+                            st.session_state.start_date = ns
+                            st.session_state.end_date = ne
+                            st.rerun()
+                    except Exception: pass
+
+    handle_chart_selection()
+    st.markdown('<hr style="margin-top:0.5rem; margin-bottom:1.5rem; border:0; border-top:1px solid rgba(255,255,255,0.05);">', unsafe_allow_html=True)
 
     # Event/News filtering is now handled by the RDB many-to-many relationship
     # No need for manual file selection
     
 
-# --- Main Page ---
-if df.empty:
-    st.error("No data found for selected asset.")
-else:
-    st.subheader(f"📊 Market Analysis: {selected_ko} ({asset_name})")
-    
-    col_chart, col_side = st.columns([2, 1])
-    
-    with col_chart:
-        # Filter data based on global state
+    # --- Market Content (Left Column) ---
+    if df.empty:
+        st.error("데이터를 불러올 수 없습니다.")
+    else:
         visible_mask = (df['time'].dt.date >= st.session_state.start_date) & (df['time'].dt.date <= st.session_state.end_date)
         v_data = df.loc[visible_mask]
         
         if v_data.empty: 
-            st.warning("No data in selected range.")
+            st.warning("선택한 기간에 데이터가 없습니다.")
         else:
-            # --- Metrics Display ---
+            # Metrics
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
             start_p = v_data.iloc[0]['close']
             end_p = v_data.iloc[-1]['close']
             ret = ((end_p - start_p) / start_p) * 100
             vol = v_data['close'].pct_change().std() * (252**0.5) * 100
             
-            m_col1.metric("Period Return", f"{ret:.2f}%", f"{end_p - start_p:.2f}")
-            m_col2.metric("Volatility (Ann.)", f"{vol:.2f}%")
-            m_col3.metric("Start Date", f"{st.session_state.start_date}")
-            m_col4.metric("End Date", f"{st.session_state.end_date}")
+            m_col1.metric("수익률", f"{ret:.2f}%", f"{end_p - start_p:.2f}")
+            m_col2.metric("변동성 (연율)", f"{vol:.2f}%")
+            m_col3.metric("시작일", f"{st.session_state.start_date}")
+            m_col4.metric("종료일", f"{st.session_state.end_date}")
 
-            # --- Chart (NOT nested in fragment to allow global date sync) ---
-            fig = go.Figure(go.Scatter(x=v_data['time'], y=v_data['close'], mode='lines', line=dict(color='#007AFF', width=2)))
+            # Enhanced Chart
+            fig = go.Figure(go.Scatter(
+                x=v_data['time'], 
+                y=v_data['close'], 
+                mode='lines', 
+                line=dict(color='#007AFF', width=3),
+                fill='tozeroy',
+                fillcolor='rgba(0, 122, 255, 0.1)'
+            ))
             
             fig.update_layout(
-                height=550,
+                height=650,
                 template="plotly_dark",
-                dragmode="select",  # Reverted to select to support 'Drag to Zoom' behavior
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis=dict(rangeslider=dict(visible=False), showgrid=False),
-                yaxis=dict(autorange=True, showgrid=True, gridcolor="#333"),
+                dragmode="select",
+                margin=dict(l=0, r=0, t=20, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(rangeslider=dict(visible=False), showgrid=False, color="#888"),
+                yaxis=dict(autorange=True, showgrid=True, gridcolor="rgba(255,255,255,0.05)", color="#888"),
                 hovermode="x unified"
             )
             
-            st.plotly_chart(
-                fig, 
-                on_select="rerun", 
-                selection_mode="box", 
-                key="main_chart", 
-                width="stretch"
-            )
+            st.plotly_chart(fig, on_select="rerun", selection_mode="box", key="main_chart", use_container_width=True)
 
-    # --- Side Panel (Timeline & Chat) ---
-    with col_side:
-        tab_ev, tab_chat, tab_multi = st.tabs(["📅 Timeline", "🤖 AI Analyst", "⚔️ AI Debate"])
-        
-        # Tab 1: Timeline
-        with tab_ev:
-            @st.cache_data(ttl=3600)
-            def get_cached_events(asset_name, start_date, end_date):
-                return news_repo.search_events(
-                    start_date, 
-                    end_date,
-                    asset_symbol=asset_name
-                )
+# --- Side Panel Content (Right Column - Starts from top) ---
+with col_main_right:
+    tab_ev, tab_chat, tab_multi = st.tabs(["📅 Timeline", "🤖 AI Analyst", "⚔️ AI Debate"])
+    
+    with tab_ev:
+        @st.cache_data(ttl=3600)
+        def get_cached_events(asset_name, start_date, end_date):
+            return news_repo.search_events(start_date, end_date, asset_symbol=asset_name)
 
-            @st.fragment
-            def render_timeline(asset_name, start_date, end_date):
-                # Load events using the app-level cache
-                display_events = get_cached_events(asset_name, start_date, end_date)
-                
-                # Header with refresh button
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.caption(f"📊 Found {len(display_events)} events")
-                    st.caption(f"📅 {start_date} ~ {end_date}")
-                with col2:
-                    if st.button("🔄 Refresh", key="refresh_events", width="stretch"):
-                        get_cached_events.clear()
-                        st.rerun()
-                
-                # Scrollable Container for Events
-                with st.container(height=700):
-                    for ev in display_events:
-                        with st.container(border=True):
-                            d = ev.get('start_date') or ev.get('date', 'Unknown')
-                            t = ev.get('title', 'No Title')
-                            desc = ev.get('description', '')
-                            
-                            # Header: Date & Title
-                            st.markdown(f"**{d}** | **{t}**")
-                            
-                            # Body: Description
-                            if desc:
-                                st.markdown(f"{desc}")
-                            
-                            # Articles: Show linked article titles
-                            articles = ev.get('articles', [])
-                            if articles:
-                                st.caption(f"📰 Related Articles ({len(articles)}):")
-                                for art in articles[:3]:  # Limit to 3 for UI cleanliness
-                                    art_title = art.get('title', 'Untitled')
-                                    art_url = art.get('url', '')
-                                    if art_url:
-                                        st.markdown(f"- [{art_title}]({art_url})")
-                                    else:
-                                        st.markdown(f"- {art_title}")
+        @st.fragment
+        def render_timeline(asset_name, start_date, end_date):
+            display_events = get_cached_events(asset_name, start_date, end_date)
             
-            render_timeline(asset_name, st.session_state.start_date, st.session_state.end_date)
-
-        
-        # Tab 2: Chat
-        with tab_chat:
-            chat_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.caption(f"📊 {len(display_events)} 사건 발견")
+            with col2:
+                if st.button("🔄", key="refresh_events"):
+                    get_cached_events.clear()
+                    st.rerun()
             
-        # Tab 3: Multi-Agent
-        with tab_multi:
-            multi_agent_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
+            with st.container(height=800):
+                for ev in display_events:
+                    with st.container(border=True):
+                        d = ev.get('start_date') or ev.get('date', 'Unknown')
+                        t = ev.get('title', 'No Title')
+                        desc = ev.get('description', '')
+                        st.markdown(f"**{d}** | {t}")
+                        if desc: st.markdown(f"<small style='color:#ccc'>{desc}</small>", unsafe_allow_html=True)
+                        
+                        articles = ev.get('articles', [])
+                        if articles:
+                            for art in articles[:2]:
+                                title = art.get('title', 'Untitled')
+                                url = art.get('url', '')
+                                if url: st.markdown(f"<small>[- {title}]({url})</small>", unsafe_allow_html=True)
+                                else: st.markdown(f"<small>- {title}</small>", unsafe_allow_html=True)
+        
+        render_timeline(asset_name, st.session_state.start_date, st.session_state.end_date)
+
+    with tab_chat:
+        chat_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
+        
+    with tab_multi:
+        multi_agent_interface(asset_name, st.session_state.start_date, st.session_state.end_date)
