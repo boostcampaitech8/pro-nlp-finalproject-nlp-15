@@ -22,8 +22,8 @@ class Price(Base):
     __tablename__ = "futures_price"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    asset_id = Column("commodity_id", Integer, ForeignKey("commodity.id"), nullable=False)
-    time = Column(Date, nullable=False) 
+    asset_id = Column("commodity_id", Integer, ForeignKey("commodity.id"), nullable=False, index=True)
+    time = Column(Date, nullable=False, index=True) 
     open = Column(Float)
     high = Column(Float)
     low = Column(Float)
@@ -38,12 +38,12 @@ class Event(Base):
     
     id = Column(Integer, primary_key=True) # Samples show integer ID
     original_source_id = Column("event_id", String(50), index=True)
-    date = Column("start_date", Date, nullable=False)
+    date = Column("start_date", Date, nullable=False, index=True)
     end_date = Column(Date)
     title = Column(String(255), nullable=False)
     description = Column(Text)
     source_article_ids = Column("source", Text)
-    asset_id = Column("commodity_id", Integer, ForeignKey("commodity.id"))
+    asset_id = Column("commodity_id", Integer, ForeignKey("commodity.id"), index=True)
     
     asset = relationship("Asset", back_populates="events")
 
@@ -88,7 +88,11 @@ def get_engine(cfg: Optional[dict] = None):
     elif cfg.get('type') == 'mysql':
         m = cfg.get('mysql', {})
         url = f"mysql+pymysql://{m['user']}:{m['password']}@{m['host']}:{m['port']}/{m['dbname']}"
-        return create_engine(url)
+        return create_engine(
+            url,
+            pool_pre_ping=True,
+            pool_recycle=3600
+        )
     
     raise ValueError(f"Unsupported database type: {cfg.get('type')}")
 

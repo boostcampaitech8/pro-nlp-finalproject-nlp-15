@@ -35,10 +35,11 @@ st.set_page_config(page_title="AI Financial Intelligence", layout="wide")
 # --- Style / CSS ---
 st.markdown("""
     <style>
-    /* Premium Font & Theme */
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+    /* Sharp Premium Font & Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
     
-    * { font-family: 'Outfit', sans-serif; }
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
     
     .stApp {
         background: radial-gradient(circle at top left, #0e1117, #1a1c24);
@@ -60,13 +61,21 @@ st.markdown("""
         font-weight: 700;
         font-size: 2.2rem;
         margin-bottom: 1rem;
+        letter-spacing: -0.02em;
     }
     
-    /* Metric Card Styling */
+    /* Metric Card Styling - Sophisticated Serif & White */
     [data-testid="stMetricValue"] {
-        font-size: 1.8rem;
-        font-weight: 600;
-        color: #007AFF;
+        font-family: 'Playfair Display', serif !important;
+        font-size: 2.4rem;
+        font-weight: 700;
+        color: #ffffff !important;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #888 !important;
+        font-weight: 500 !important;
     }
     
     /* Sidebar removal hack */
@@ -76,22 +85,36 @@ st.markdown("""
     
     /* Widget Styling */
     .stSelectbox label, .stDateInput label {
-        color: #888 !important;
+        color: #aaa !important;
         font-size: 0.8rem !important;
         font-weight: 600 !important;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 1.2px;
     }
     
-    /* Button Animation */
+    /* Button Styling - Solid & Sharp */
     button[kind="primary"] {
-        background: linear-gradient(90deg, #007AFF, #0051FF) !important;
+        background: #007AFF !important;
         border: none !important;
-        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+        color: white !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
     }
     button[kind="primary"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+        background: #0051FF !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+    }
+    button[kind="secondary"] {
+        background: transparent !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        color: #fff !important;
+        border-radius: 8px !important;
+    }
+    button[kind="secondary"]:hover {
+        border-color: #fff !important;
+        background: rgba(255, 255, 255, 0.05) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -147,7 +170,7 @@ def chat_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any
         st.session_state.last_asset_fragment = asset_name
 
     # Chat UI container
-    chat_box = st.container(height=750)
+    chat_box = st.container(height=850)
     
     # Default Greeting if empty
     if len(msgs.messages) == 0:
@@ -205,10 +228,17 @@ def multi_agent_interface(asset_name: str, start_date: typing.Any, end_date: typ
     with col_opt:
         rounds = st.slider("Debate Rounds", min_value=1, max_value=5, value=1)
     
-    if col_btn.button("🚀 Start Multi-Agent Debate", type="primary", use_container_width=True):
+    is_debate_running = st.session_state.get("debate_running", False)
+    if col_btn.button(
+        "🚀 Start Multi-Agent Debate", 
+        type="primary", 
+        use_container_width=True, 
+        disabled=is_debate_running
+    ):
         st.session_state.debate_running = True
         st.session_state.debate_messages = []
         st.session_state.debate_rounds = rounds
+        st.rerun() # Trigger a rerun to show the status and lock the button
 
     # Guide: Display below the button, but hide during debate
     if not st.session_state.get("debate_running", False):
@@ -222,7 +252,7 @@ def multi_agent_interface(asset_name: str, start_date: typing.Any, end_date: typ
         
     if "debate_running" in st.session_state and st.session_state.debate_running:
         analytical_status = st.status("🔍 Initializing Market Research...", expanded=True)
-        log_box = st.container(height=650)
+        log_box = st.container(height=660)
         
         # Prepare data for debate
         with analytical_status:
@@ -330,10 +360,10 @@ with col_main_left:
     # --- Top Bar Controls (Inside Left Column) ---
     with st.container():
         # Field columns (t_cols) and Button column (t_btn)
-        t_cols, t_btn = st.columns([0.65, 0.35], gap="large") 
+        t_cols, _, t_btn = st.columns([0.5, 0.25, 0.25], gap="large") 
         
         with t_cols:
-            t_col1, t_col2, t_col3 = st.columns([1, 0.8, 0.8], gap="small")
+            t_col1, t_col2, t_col3 = st.columns([1, 1, 1], gap="small")
             with t_col1:
                 # Format labels as "Name (Symbol)"
                 def format_asset_label(name_ko):
@@ -439,10 +469,11 @@ with col_main_left:
             ret = ((end_p - start_p) / start_p) * 100
             vol = v_data['close'].pct_change().std() * (252**0.5) * 100
             
-            m_col1.metric("수익률", f"{ret:.2f}%", f"{end_p - start_p:.2f}")
-            m_col2.metric("변동성 (연율)", f"{vol:.2f}%")
-            m_col3.metric("시작일", f"{st.session_state.start_date}")
-            m_col4.metric("종료일", f"{st.session_state.end_date}")
+            diff = end_p - start_p
+            m_col1.metric("수익률", f"{ret:+.2f}%", f"${diff:+,.2f}")
+            m_col2.metric("시작 가격", f"${start_p:,.2f}")
+            m_col3.metric("종료 가격", f"${end_p:,.2f}")
+            m_col4.metric("변동성 (연율)", f"{vol:.2f}%")
 
             # Enhanced Chart
             fig = go.Figure(go.Scatter(
