@@ -534,7 +534,7 @@ with col_main_right:
     
     with tab_ev:
         @st.cache_data(ttl=3600)
-        def get_cached_events(asset_name, start_date, end_date, keyword, page, sort_by="date", sort_order="desc"):
+        def get_cached_events(asset_name, start_date, end_date, keyword, page, sort_by="date", sort_order="desc", is_up_filter=None):
             limit = 100
             offset = page * limit
             return news_repo.search_events(
@@ -545,13 +545,14 @@ with col_main_right:
                 limit=limit,
                 offset=offset,
                 sort_by=sort_by,
-                sort_order=sort_order
+                sort_order=sort_order,
+                is_up_filter=is_up_filter
             )
 
         @st.fragment
         def render_timeline(asset_name, start_date, end_date):
             # 1. Search, Sort & Refresh Controls
-            sc1, sc2, sc3 = st.columns([2, 1, 0.3])
+            sc1, sc2 = st.columns([1.5, 1])
             
             with sc1:
                 search_query = st.text_input(
@@ -560,47 +561,59 @@ with col_main_right:
                     placeholder="Keywords...",
                     label_visibility="collapsed"
                 )
+            
             with sc2:
+                # 1. Sort Options
                 sort_options = {
                     "최신순": ("date", "desc"),
                     "과거순": ("date", "asc"),
                     "변동성 높은순": ("volatility", "desc"),
-                    "변동성 낮은순": ("volatility", "asc")
                 }
                 current_sort = (st.session_state.get("timeline_sort_by", "date"), st.session_state.get("timeline_sort_order", "desc"))
-                
-                # Find default index
                 default_idx = 0
                 for i, (label, val) in enumerate(sort_options.items()):
                     if val == current_sort:
                         default_idx = i
                         break
+                
+                # 2. Impact Options
+                impact_options = {"전체": None, "상승 요인": 1, "하락 요인": 0}
+                current_impact = st.session_state.get("timeline_impact", None)
+                default_impact_idx = list(impact_options.values()).index(current_impact) if current_impact in impact_options.values() else 0
 
-                selected_label = st.selectbox(
-                    "Sort", 
-                    options=list(sort_options.keys()),
-                    index=default_idx,
-                    label_visibility="collapsed"
-                )
+                c1, c2 = st.columns([1, 1], gap="small")
+                with c1:
+                    selected_label = st.selectbox(
+                        "Sort", options=list(sort_options.keys()), index=default_idx, label_visibility="collapsed"
+                    )
+                with c2:
+                    selected_impact = st.selectbox(
+                        "Impact", options=list(impact_options.keys()), index=default_impact_idx, label_visibility="collapsed"
+                    )
+                
                 sort_by, sort_order = sort_options[selected_label]
-            with sc3:
-                if st.button("🔄", key="ref_ev", help="Refresh Data", use_container_width=True):
-                    get_cached_events.clear()
-                    st.rerun()
+                is_up_filter = impact_options[selected_impact]
+            # with sc3:
+            #     if st.button("🔄", key="ref_ev", help="Refresh Data", use_container_width=True):
+            #         get_cached_events.clear()
+            #         st.rerun()
             
-            # Update state and reset page if search or sort changes
+            # Update state and reset page if search, sort, or impact changes
             if (search_query != st.session_state.get("timeline_search") or 
                 sort_by != st.session_state.get("timeline_sort_by") or 
-                sort_order != st.session_state.get("timeline_sort_order")):
+                sort_order != st.session_state.get("timeline_sort_order") or
+                is_up_filter != st.session_state.get("timeline_impact")):
                 st.session_state.timeline_search = search_query
                 st.session_state.timeline_sort_by = sort_by
                 st.session_state.timeline_sort_order = sort_order
+                st.session_state.timeline_impact = is_up_filter
                 st.session_state.timeline_page = 0
                 st.rerun()
 
             # 2. Fetch Data
             sort_by = st.session_state.get("timeline_sort_by", "date")
             sort_order = st.session_state.get("timeline_sort_order", "desc")
+            is_up_filter = st.session_state.get("timeline_impact", None)
             
             page = st.session_state.get("timeline_page", 0)
             display_events = get_cached_events(
@@ -610,13 +623,15 @@ with col_main_right:
                 search_query,
                 page,
                 sort_by=sort_by,
-                sort_order=sort_order
+                sort_order=sort_order,
+                is_up_filter=is_up_filter
             )
             total_count = news_repo.count_events(
                 start_date, 
                 end_date, 
                 asset_symbol=asset_name,
-                keyword=st.session_state.timeline_search
+                keyword=st.session_state.timeline_search,
+                is_up_filter=is_up_filter
             )
             
             # 3. Pagination & Status Header
@@ -634,13 +649,20 @@ with col_main_right:
                             d = ev.get('start_date') or ev.get('date', 'Unknown')
                             t = ev.get('title', 'No Title')
                             desc = ev.get('description', '')
+                            summ = ev.get('summarize', '')
+                            is_up = ev.get('is_up')
                             
-                            # Header: Date Only
-                            st.markdown(f"<small style='color:#888;'>📅 {d}</small>", unsafe_allow_html=True)
+                            # Header: Date & Impact Icon
+                            impact_icon = "🟢" if is_up == 1 else "🔴" if is_up == 0 else "⚪"
+                            st.markdown(f"<small style='color:#888;'>{impact_icon} &nbsp; {d}</small>", unsafe_allow_html=True)
                             st.markdown(f"#### {t}")
                             
                             if desc: 
                                 st.markdown(f"<div style='margin-bottom:0.5rem; font-size:0.95rem;'>{desc}</div>", unsafe_allow_html=True)
+                            
+                            if summ:
+                                with st.expander("📝 AI 인사이트", expanded=False):
+                                    st.markdown(f"{summ}")
                             
                             articles = ev.get('articles', [])
                             if articles:

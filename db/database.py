@@ -44,6 +44,8 @@ class Event(Base):
     description = Column(Text)
     source_article_ids = Column("source", Text)
     asset_id = Column("commodity_id", Integer, ForeignKey("commodity.id"), index=True)
+    summarize = Column(Text)
+    is_up = Column(Integer) # tinyint(1) mapping
     
     asset = relationship("Asset", back_populates="events")
 

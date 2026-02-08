@@ -15,7 +15,8 @@ class EventRepository:
         limit: int = 100,
         offset: int = 0,
         sort_by: str = "date", # New: "date" or "volatility"
-        sort_order: str = "desc"
+        sort_order: str = "desc",
+        is_up_filter: int | None = None # 1 for Up, 0 for Down
     ) -> list[dict]:
         """
         Retrieves events from the database with pagination, search, and sorting.
@@ -31,6 +32,9 @@ class EventRepository:
                 query = query.filter(
                     (Event.title.ilike(search_filter)) | (Event.description.ilike(search_filter))
                 )
+            
+            if is_up_filter is not None:
+                query = query.filter(Event.is_up == is_up_filter)
             
             
             if sort_by == "volatility":
@@ -85,6 +89,8 @@ class EventRepository:
                     'id': e.id,
                     'title': e.title,
                     'description': e.description,
+                    'summarize': e.summarize,
+                    'is_up': e.is_up,
                     'start_date': e.date.isoformat(),
                     'articles': articles,
                     'assets': [e.asset.code] if e.asset else []
@@ -97,7 +103,8 @@ class EventRepository:
         start_date: date, 
         end_date: date, 
         asset_symbol: str | None = None, 
-        keyword: str | None = None
+        keyword: str | None = None,
+        is_up_filter: int | None = None
     ) -> int:
         """Returns total count of events matching filters (for pagination)."""
         with Session(_self.engine) as session:
@@ -109,4 +116,6 @@ class EventRepository:
                 query = query.filter(
                     (Event.title.ilike(search_filter)) | (Event.description.ilike(search_filter))
                 )
+            if is_up_filter is not None:
+                query = query.filter(Event.is_up == is_up_filter)
             return query.count()
