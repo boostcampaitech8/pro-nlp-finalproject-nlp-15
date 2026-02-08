@@ -177,7 +177,10 @@ def chat_interface(asset_name: str, start_date: typing.Any, end_date: typing.Any
         msgs.add_ai_message(f"안녕하세요! {asset_name} 시장 분석 전문가 AI Analyst입니다. 특정 기간의 가격 변동 원인이나 주요 뉴스에 대해 무엇이든 물어보세요.")
 
     for msg in msgs.messages:
-        chat_box.chat_message(msg.type).write(msg.content)
+        # Only show Human and AI messages that have actual text content
+        if msg.type in ("human", "ai"):
+            if msg.content:
+                chat_box.chat_message(msg.type).write(msg.content)
 
     if query := st.chat_input("Ask about market drivers..."):
         # 1. Immediately show user message
