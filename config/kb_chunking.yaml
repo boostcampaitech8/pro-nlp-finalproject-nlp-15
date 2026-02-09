@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+  - /infra@data: data
+  - /infra@database: database
+  - /infra@rag: rag
+
+resource_id: null
+all: false

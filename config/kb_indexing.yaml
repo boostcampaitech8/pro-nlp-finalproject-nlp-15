@@ -1,0 +1,9 @@
+defaults:
+  - _self_
+  - /infra@data: data
+  - /infra@database: database
+  - /infra@rag: rag
+
+resource_id: null
+force_recreate: false
+batch_size: 100

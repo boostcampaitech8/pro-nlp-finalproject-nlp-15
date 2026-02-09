@@ -1,0 +1,29 @@
+# RAG Configuration
+
+# Chunking defaults
+default:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+# Type overrides
+overrides:
+  textbook:
+    chunk_size: 1500
+  report:
+    chunk_size: 800
+
+# Vector DB
+vector_db:
+  url: "${oc.env:QDRANT_URL}"
+  knowledge_base_collection: "knowledge_base_yejoon"
+  event_collection: "events_yejoon"
+
+# Embedding models
+embedding:
+  mode: "api"  # Options: "local", "api"
+  dense:
+    model: "telepix/PIXIE-Rune-Preview"
+    api_url: "${oc.env:DENSE_EMBEDDING_API_URL}"
+  sparse:
+    model: "telepix/PIXIE-Splade-Preview"
+    api_url: "${oc.env:SPARSE_EMBEDDING_API_URL}"
