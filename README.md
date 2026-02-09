@@ -25,7 +25,7 @@
 
 <br>
 <a href="https://www.youtube.com/watch?v=5Cz0nStLCY4">
-  <img src="https://github.com/user-attachments/assets/fe4abe46-6b02-41f4-9613-b576c2928658" width="800" alt="시연 영상 보러 가기">
+  <img src="https://github.com/user-attachments/assets/fe4abe46-6b02-41f4-9613-b576c2928658" width="700" alt="시연 영상 보러 가기">
 </a>
 
 
