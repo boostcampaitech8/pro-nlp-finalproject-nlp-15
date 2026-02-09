@@ -2,7 +2,6 @@
 
 <img width="1024" height="559" alt="image (2) (1)" src="https://github.com/user-attachments/assets/6e31dc7f-2dba-45a1-b670-0749a9881231" />
 
-{%preview http://confident-ais.site %}
 
 > **그래프 위에서 핵심 사건을 탐색하고 챗봇과 대화하며 인사이트를 기르는 LLM 기반 선물 시장 금융 대시보드**
 
@@ -20,8 +19,11 @@
 
 
 ## 🎬 DEMO
-<iframe width="560" height="315" src="https://www.youtube.com/embed/5Cz0nStLCY4?si=dgCtJd-0D3xxQz0J" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+🎬 [시연 영상 보러 가기](https://www.youtube.com/watch?v=5Cz0nStLCY4)
+🚀 [직접 사용해보기 (Live Demo)](http://confident-ais.site)
 
+<div></div>
+<img width="1280" height="800" alt="Gemini_Generated_Image_zh0z2qzh0z2qzh0z" src="https://github.com/user-attachments/assets/fe4abe46-6b02-41f4-9613-b576c2928658" />
 
 
 ## ✨ 주요 기능
