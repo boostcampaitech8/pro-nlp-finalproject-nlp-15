@@ -11,9 +11,9 @@ load_dotenv()
 
 class VectorStore:
     client: Optional[QdrantClient] = None
-    dense_model: Optional[SentenceTransformer] = None
-    sparse_model: Optional[AutoModelForMaskedLM] = None
-    sparse_tokenizer: Optional[AutoTokenizer] = None
+    dense_model: Optional["SentenceTransformer"] = None
+    sparse_model: Optional["AutoModelForMaskedLM"] = None
+    sparse_tokenizer: Optional["AutoTokenizer"] = None
     
     # Class-level cache for models to prevent repeated loads
     _model_cache: Dict[str, Any] = {}
