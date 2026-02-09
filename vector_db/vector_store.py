@@ -1,10 +1,7 @@
 import os
 import requests
 from typing import List, Dict, Optional, Any, cast
-import torch
-from sentence_transformers import SentenceTransformer
 from datetime import datetime, date
-from transformers import AutoModelForMaskedLM, AutoTokenizer
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from tqdm import tqdm
@@ -55,6 +52,16 @@ class VectorStore:
 
         # 2. Local Model Loading (only if mode is local)
         if self.mode == "local":
+            try:
+                import torch
+                from sentence_transformers import SentenceTransformer
+                from transformers import AutoModelForMaskedLM, AutoTokenizer
+            except ImportError:
+                raise ImportError(
+                    "Local embedding models require 'torch', 'sentence-transformers', and 'transformers'. "
+                    "Please install them or use mode='api'."
+                )
+
             if torch.cuda.is_available():
                 self.device = "cuda"
             elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -109,6 +116,7 @@ class VectorStore:
         if not self.sparse_tokenizer:
             raise ValueError("Sparse tokenizer not initialized. Provide sparse_model_name during initialization.")
             
+        import torch
         inputs = self.sparse_tokenizer([text], return_tensors="pt", padding=True, truncation=True).to(self.device)
         with torch.no_grad():
             outputs = self.sparse_model(**inputs)
@@ -150,6 +158,7 @@ class VectorStore:
         if not self.sparse_tokenizer:
             raise ValueError("Sparse tokenizer not initialized.")
             
+        import torch
         inputs = self.sparse_tokenizer(texts, return_tensors="pt", padding=True, truncation=True).to(self.device)
         with torch.no_grad():
             outputs = self.sparse_model(**inputs)

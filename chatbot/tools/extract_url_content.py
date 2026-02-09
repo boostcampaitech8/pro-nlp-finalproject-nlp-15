@@ -1,7 +1,6 @@
+# re, requests, bs4 are standard/minimal
 import re
 import requests
-from playwright.sync_api import sync_playwright
-from playwright_stealth import Stealth
 from bs4 import BeautifulSoup
 from langchain_core.tools import tool
 
@@ -52,6 +51,12 @@ def extract_url_content(url: str) -> str:
 
     # 2. Fallback to Playwright (Modern/Robust)
     try:
+        try:
+            from playwright.sync_api import sync_playwright
+            from playwright_stealth import Stealth
+        except ImportError:
+            return "Note: Playwright is not installed. Deep scraping skipped. (Legacy extraction failed or returned too little content)."
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
