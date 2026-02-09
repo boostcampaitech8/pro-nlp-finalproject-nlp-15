@@ -20,10 +20,14 @@
 
 ## 🎬 DEMO
 🎬 [시연 영상 보러 가기](https://www.youtube.com/watch?v=5Cz0nStLCY4)
+<br>
+<br>
 🚀 [직접 사용해보기 (Live Demo)](http://confident-ais.site)
 
-<div></div>
-<img width="1280" height="800" alt="Gemini_Generated_Image_zh0z2qzh0z2qzh0z" src="https://github.com/user-attachments/assets/fe4abe46-6b02-41f4-9613-b576c2928658" />
+<br>
+<a href="https://www.youtube.com/watch?v=5Cz0nStLCY4">
+  <img src="https://github.com/user-attachments/assets/fe4abe46-6b02-41f4-9613-b576c2928658" width="800" alt="시연 영상 보러 가기">
+</a>
 
 
 ## ✨ 주요 기능
