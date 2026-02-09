@@ -21,7 +21,6 @@
 ## 🎬 DEMO
 🎬 [시연 영상 보러 가기](https://www.youtube.com/watch?v=5Cz0nStLCY4)
 <br>
-<br>
 🚀 [직접 사용해보기 (Live Demo)](http://confident-ais.site)
 
 <br>
