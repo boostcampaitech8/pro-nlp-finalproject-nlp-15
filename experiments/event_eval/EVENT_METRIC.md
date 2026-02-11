@@ -77,7 +77,7 @@ python -m experiments.event_eval.event_evaluation
 
 ### 4.2 해석
 
-- 대부분의 키워드에서 Coherence가 약 0.56~0.58, Intra-event similarity가 0.83~0.96 수준으로, 이벤트 내부 주제 일관성과 응집도는 전반적으로 양호한 편이다.
+- 대부분의 키워드에서 Coherence가 약 0.56 ~ 0.58, Intra-event similarity가 0.83 ~ 0.96 수준으로, 이벤트 내부 주제 일관성과 응집도는 전반적으로 양호한 편이다.
 - Inter-event similarity는 0.18~0.33 범위로 유지되어 이벤트 간 분리도도 일정 수준 확보된 것으로 해석된다.
 - Fragmentation by similarity는 키워드에 따라 0.08~0.35 수준으로, 중복 추출·과분할된 이벤트 비중을 비교적 낮게 유지하고 있다.
 - Merging error rate는 대부분 0.15 이하(대부분 0.01~0.14)로, 심각한 오병합 현상은 제한적인 수준으로 관찰된다.
