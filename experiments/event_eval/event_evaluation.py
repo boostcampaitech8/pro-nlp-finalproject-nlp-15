@@ -1,70 +1,54 @@
-"""
-Event extraction evaluation: orchestration, report, CLI.
-
-Metrics are implemented in metrics.py; data/embedding helpers in utils.py.
-"""
-
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# Project root: align with MAIN root (same as other workflow scripts)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CFG_PATH = Path(__file__).with_name("event_evaluate.yaml")
+with open(CFG_PATH, "r", encoding="utf-8") as f:
+    _RAW_CFG = yaml.safe_load(f) or {}
 
-try:
-    from .utils import (
-        load_articles,
-        load_events,
-        align_events_articles,
-        tokenize,
-        get_article_embeddings,
-        get_top_words_per_event,
-    )
-    from .metrics import (
-        coherence_cv,
-        intra_event_similarity,
-        inter_event_similarity,
-        fragmentation_rate_per_event,
-        fragmentation_by_similarity_per_event,
-        merging_error_per_event,
-    )
-except ImportError:
-    from utils import (
-        load_articles,
-        load_events,
-        align_events_articles,
-        tokenize,
-        get_article_embeddings,
-        get_top_words_per_event,
-    )
-    from metrics import (
-        coherence_cv,
-        intra_event_similarity,
-        inter_event_similarity,
-        fragmentation_rate_per_event,
-        fragmentation_by_similarity_per_event,
-        merging_error_per_event,
-    )
+DEFAULT_EMBEDDING_MODEL = _RAW_CFG.get("embedding_model", "all-MiniLM-L6-v2")
+DEFAULT_TOPK_WORDS = int(_RAW_CFG.get("topk_words", 15))
+DEFAULT_MERGING_THRESHOLD = _RAW_CFG.get("merging_threshold", 0.4)
+DEFAULT_MERGING_PERCENTILE = _RAW_CFG.get("merging_percentile", None)
+DEFAULT_FRAG_SIM_THRESHOLD = _RAW_CFG.get("fragmentation_similarity_threshold", 0.85)
+DEFAULT_DATASET = _RAW_CFG.get("dataset")
+DEFAULT_OUTPUT_PATH = _RAW_CFG.get("output_path")
+DEFAULT_INCLUDE_OVERALL_ROW = bool(_RAW_CFG.get("include_overall_row", True))
+
+from .utils import (
+    load_articles,
+    load_events,
+    align_events_articles,
+    tokenize,
+    get_article_embeddings,
+    get_top_words_per_event,
+)
+from .metrics import (
+    coherence_cv,
+    intra_event_similarity,
+    inter_event_similarity,
+    fragmentation_rate_per_event,
+    fragmentation_by_similarity_per_event,
+    merging_error_per_event,
+)
 
 
 def run_evaluation(
     events_path: Path,
     articles_path: Path,
-    embedding_model: str = "all-MiniLM-L6-v2",
-    topk_words: int = 15,
-    merging_threshold: float | None = 0.4,
-    merging_percentile: float | None = None,
-    fragmentation_similarity_threshold: float = 0.85,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    topk_words: int = DEFAULT_TOPK_WORDS,
+    merging_threshold: float | None = DEFAULT_MERGING_THRESHOLD,
+    merging_percentile: float | None = DEFAULT_MERGING_PERCENTILE,
+    fragmentation_similarity_threshold: float = DEFAULT_FRAG_SIM_THRESHOLD,
 ) -> dict:
-    """
-    Load events and articles, compute all metrics.
-    Returns dict with per-event Series and overall values.
-    """
+
     articles = load_articles(articles_path)
     events = load_events(events_path)
     events, events_doc_indices = align_events_articles(events, articles)
@@ -123,7 +107,6 @@ def run_evaluation(
 
 
 def results_to_dataframe(results: dict) -> pd.DataFrame | None:
-    """Build per-event metrics DataFrame from run_evaluation results. Returns None if error."""
     if "error" in results:
         return None
     return pd.DataFrame({
@@ -140,10 +123,8 @@ def results_to_dataframe(results: dict) -> pd.DataFrame | None:
 def save_metrics_csv(
     results: dict,
     output_path: Path,
-    dataset_name: str = "",
     include_overall: bool = True,
 ) -> None:
-    """Save per-event metrics to CSV. If include_overall, append a row with overall means."""
     df = results_to_dataframe(results)
     if df is None:
         return
@@ -166,7 +147,6 @@ def save_metrics_csv(
 
 
 def print_report(results: dict, dataset_name: str = "") -> None:
-    """Print per-event table and overall summary."""
     if "error" in results:
         print(f"[{dataset_name}] Error: {results['error']}")
         return
@@ -196,7 +176,6 @@ def print_report(results: dict, dataset_name: str = "") -> None:
 
 
 def discover_pairs(events_dir: Path, articles_dir: Path) -> list[tuple[Path, Path]]:
-    """Return list of (jsonl_path, csv_path) where base names match."""
     pairs = []
     for jpath in events_dir.glob("*.jsonl"):
         name = jpath.stem
@@ -207,37 +186,17 @@ def discover_pairs(events_dir: Path, articles_dir: Path) -> list[tuple[Path, Pat
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Event extraction evaluation")
-    parser.add_argument(
-        "--events-dir",
-        type=Path,
-        default=Path("data/events"),
-        help="Directory of event JSONL files (relative to project root)",
-    )
-    parser.add_argument(
-        "--articles-dir",
-        type=Path,
-        default=Path("data/articles"),
-        help="Directory of article CSV files (relative to project root)",
-    )
-    parser.add_argument("--dataset", type=str, default=None, help="Single dataset (stem); if set, only evaluate this one")
-    parser.add_argument("--model", type=str, default="all-MiniLM-L6-v2", help="Sentence-transformer model")
-    parser.add_argument("--topk", type=int, default=15, help="Top-k words per event for coherence")
-    parser.add_argument("--merging-threshold", type=float, default=0.4, help="Intra similarity threshold for merging error")
-    parser.add_argument("--merging-percentile", type=float, default=None, help="Use percentile instead of threshold (e.g. 25)")
-    parser.add_argument("--fragmentation-similarity-threshold", type=float, default=0.85, help="Cosine threshold for fragmentation_by_similarity (event has sibling >= this)")
-    parser.add_argument("--output", "-o", type=Path, default=None, help="Save per-event metrics to this CSV (or directory for multiple datasets)")
-    parser.add_argument("--no-overall-row", action="store_true", help="Do not add _overall row to saved CSV")
-    args = parser.parse_args()
-
-    # Use MAIN project root so paths like data/events, data/articles match config/infra/data.yaml
     root = PROJECT_ROOT
-    events_dir = root / args.events_dir if not args.events_dir.is_absolute() else args.events_dir
-    articles_dir = root / args.articles_dir if not args.articles_dir.is_absolute() else args.articles_dir
+    events_dir = root / "data" / "events"
+    articles_dir = root / "data" / "articles"
 
-    if args.dataset:
-        jpath = events_dir / f"{args.dataset}.jsonl"
-        cpath = articles_dir / f"{args.dataset}.csv"
+    dataset = DEFAULT_DATASET
+    output_conf = DEFAULT_OUTPUT_PATH
+    include_overall_row = DEFAULT_INCLUDE_OVERALL_ROW
+
+    if dataset:
+        jpath = events_dir / f"{dataset}.jsonl"
+        cpath = articles_dir / f"{dataset}.csv"
         if not jpath.exists() or not cpath.exists():
             print(f"Missing: {jpath} or {cpath}")
             return
@@ -248,7 +207,9 @@ def main() -> None:
             print("No matching event JSONL and article CSV pairs found.")
             return
 
-    output_path = args.output
+    output_path = None
+    if output_conf is not None:
+        output_path = Path(output_conf)
     if output_path is not None:
         output_path = output_path if output_path.is_absolute() else root / output_path
 
@@ -257,11 +218,6 @@ def main() -> None:
         results = run_evaluation(
             jpath,
             cpath,
-            embedding_model=args.model,
-            topk_words=args.topk,
-            merging_threshold=args.merging_threshold,
-            merging_percentile=args.merging_percentile,
-            fragmentation_similarity_threshold=args.fragmentation_similarity_threshold,
         )
         print_report(results, dataset_name=name)
 
@@ -274,8 +230,7 @@ def main() -> None:
             save_metrics_csv(
                 results,
                 save_path,
-                dataset_name=name,
-                include_overall=not args.no_overall_row,
+                include_overall=include_overall_row,
             )
 
 
