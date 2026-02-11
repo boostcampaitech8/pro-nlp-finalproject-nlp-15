@@ -78,7 +78,8 @@
 
 
 ## 💯 평가 지표 및 결과
-
+본 프로젝트의 사건 추출 결과는 Coherence, Intra/Inter-event similarity, Fragmentation, Merging error 등의 지표로 정량 평가했습니다.  
+지표 정의와 상세 실험 결과는 `experiments/event_eval/EVENT_METRIC.md` 문서에 정리되어 있습니다.
 
 ## 🛠️ Tools and Technologies
 
