@@ -1,0 +1,8 @@
+scenarios:
+  - name: "S1: 옥수수 특정 기간 요약 (단순 질문)"
+    # 중점: 현재 보고 있는 기간의 수치를 정확히 짚어내는지 확인
+    asset: "GC"
+    query: "지금 금 사야될까..? 너무 늦었나?"
+    start_date: "2025-12-25"
+    end_date: "2026-01-31"
+    expected_tool: ["get_period_overview"]

@@ -1,40 +1,48 @@
-# Python
+# --- uv & Virtual Environments ---
+.venv/
+uv.lock
+# 만약 팀 프로젝트에서 라이브러리 버전을 고정하고 싶다면 uv.lock은 제외(삭제)해도 됩니다.
+
+# --- Python Base ---
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+.env
+requirements.txt
+.python-version
 
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
+# --- Project Specific Data ---
+# 원본 데이터와 결과물 제외
+data/
+sqlite/
+# output 폴더 내부의 개별 데이터들은 제외하고 구조는 유지
+outputs/
+logs/
+docs/
 
-# IDE
-.idea/
+
+# --- State Management ---
+# 개인별 진행 상황은 공유하지 않음
+output/.state/
+
+# --- IDE & OS ---
 .vscode/
-*.swp
-*.swo
-*~
+.idea/
+.DS_Store
+Thumbs.db
+.agent/
+.github
 
-# Jupyter
-.ipynb_checkpoints/
+# --- Hydra & Configuration ---
+outputs/
+multirun/
+
+# 민감한 설정 파일 - example 파일만 Git 추적
+config/llm/local.yaml
+config/db/rdb.yaml
+
+# 환경 변수
+.env.local
 
 # Testing
 .pytest_cache/
@@ -44,22 +52,5 @@ htmlcov/
 # mypy
 .mypy_cache/
 
-# Hydra outputs
-outputs/
-multirun/
-
-# 민감한 설정 파일 - example 파일만 Git 추적
-# config/config.yaml 은 민감 정보 없음 (defaults, prompts만 포함)
-config/llm/local.yaml
-config/db/rdb.yaml
-
-# 환경 변수
-.env
-.env.local
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Data
-data/
+# Jupyter
+.ipynb_checkpoints/

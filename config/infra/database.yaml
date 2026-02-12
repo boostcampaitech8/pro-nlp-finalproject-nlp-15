@@ -1,0 +1,16 @@
+# type: sqlite
+type: mysql
+db_path: ${data.db_path}
+
+# SQLite specific
+timeout: 30
+journal_mode: "WAL"
+synchronous: "NORMAL"
+
+# MySQL specific (external)
+mysql:
+  host: ${oc.env:MYSQL_HOST}
+  port: ${oc.env:MYSQL_PORT,7306}
+  user: ${oc.env:MYSQL_USER}
+  password: ${oc.env:MYSQL_PASSWORD}
+  dbname: ${oc.env:MYSQL_DBNAME}
