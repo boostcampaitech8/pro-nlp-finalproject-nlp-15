@@ -32,6 +32,25 @@ output/.state/
 Thumbs.db
 .agent/
 .github
+
 # --- Hydra & Configuration ---
 outputs/
 multirun/
+
+# 민감한 설정 파일 - example 파일만 Git 추적
+config/llm/local.yaml
+config/db/rdb.yaml
+
+# 환경 변수
+.env.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/
