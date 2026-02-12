@@ -16,6 +16,7 @@ dependencies = [
     "pandas>=2.3.3",
     "langfuse>=3.12.1",
     "plotly>=6.5.2",
+    "psycopg2-binary>=2.9.9",
     "pymysql>=1.1.2",
     "pyrefly>=0.51.0",
     "python-dotenv>=1.2.1",
