@@ -1,0 +1,6 @@
+prices_dir: "data/prices"
+events_dir: "data/events"
+articles_dir: "data/articles"
+chunks_dir: "data/chunks"
+db_path: "sqlite/stockinfo.db"
+manifest_path: "data/resources/manifest.json"

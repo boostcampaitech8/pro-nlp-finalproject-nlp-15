@@ -1,0 +1,11 @@
+embedding_model: "all-MiniLM-L6-v2"
+topk_words: 15
+merging_threshold: 0.4
+merging_percentile: null
+fragmentation_similarity_threshold: 0.85
+
+dataset: null
+
+output_path: null
+include_overall_row: true
+
